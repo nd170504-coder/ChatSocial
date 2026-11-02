@@ -5,6 +5,7 @@ import com.chatsocial.dto.auth.*;
 import com.chatsocial.dto.user.UserResponse;
 import com.chatsocial.service.AuthService;
 import com.chatsocial.service.UserSessionService;
+import com.chatsocial.service.EmailVerificationService;
 import com.chatsocial.utils.SecurityUtils;
 import com.chatsocial.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,12 +26,27 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
     private final AuthService authService;
     private final UserSessionService sessions;
+    private final EmailVerificationService verification;
 
     @PostMapping("/register")
-    @Operation(summary = "Đăng ký tài khoản", description = "Tạo user và profile, sau đó đăng nhập để lấy JWT.")
+    @Operation(summary = "Đăng ký tài khoản", description = "Tạo tài khoản chờ xác minh và gửi OTP qua email. Xác minh trước khi login.")
     public ResponseEntity<ApiResponse<UserResponse>> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Registration successful", authService.register(request)));
+                .body(ApiResponse.success("Registration received; check your email for verification", authService.register(request)));
+    }
+
+    @PostMapping("/verify-email")
+    @Operation(summary = "Xác minh email", description = "Nhập email và OTP 6 chữ số. Thành công thì có thể login.")
+    public ResponseEntity<ApiResponse<UserResponse>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Email verified successfully", verification.verify(request)));
+    }
+
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Gửi lại OTP", description = "Tối thiểu 60 giây giữa các lần gửi, tối đa 5 email mỗi giờ cho một tài khoản.")
+    public ResponseEntity<ApiResponse<Void>> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        verification.resend(request);
+        return ResponseEntity.accepted().body(ApiResponse.success(
+                "If the account is pending verification and sending is allowed, a code will be emailed", null));
     }
 
     @PostMapping("/login")

@@ -45,6 +45,7 @@ class EntityMappingTests {
                     .addAnnotatedClass(UserProfile.class)
                     .addAnnotatedClass(UserSession.class)
                     .addAnnotatedClass(UserRefreshToken.class)
+                    .addAnnotatedClass(EmailVerification.class)
                     .addAnnotatedClass(Friendship.class)
                     .addAnnotatedClass(FriendRequest.class)
                     .addAnnotatedClass(Post.class)
@@ -60,7 +61,7 @@ class EntityMappingTests {
                     .buildMetadata();
 
             try (var sessionFactory = metadata.buildSessionFactory()) {
-                assertEquals(16, sessionFactory.getMetamodel().getEntities().size());
+                assertEquals(17, sessionFactory.getMetamodel().getEntities().size());
                 assertEquals(1, metadata.getEntityBinding(PostLike.class.getName())
                         .getTable().getPrimaryKey().getColumnSpan());
                 assertEquals(2, metadata.getEntityBinding(ConversationMember.class.getName())
