@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:auth;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;INIT=CREATE SCHEMA IF NOT EXISTS chatsocial
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+app:
+  jwt:
+    # Public fixture for isolated tests only. Never use in a running deployment.
+    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    issuer: chatsocial-test
+    access-token-seconds: 10800
+  cors:
+    allowed-origins: http://localhost:5173
