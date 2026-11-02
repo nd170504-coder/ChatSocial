@@ -16,16 +16,18 @@ public class JwtService {
         this.properties = properties;
     }
 
-    public String createAccessToken(String userId) {
-        Instant now = Instant.now();
+    public Jwt createAccessToken(String userId, String sessionId, Instant sessionExpiresAt) {
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        Instant expiresAt = now.plusSeconds(properties.accessTokenSeconds());
+        if (sessionExpiresAt.isBefore(expiresAt)) expiresAt = sessionExpiresAt;
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
                 .subject(userId)
+                .id(java.util.UUID.randomUUID().toString())
+                .claim("sid", sessionId)
                 .issuedAt(now)
-                .expiresAt(now.plusSeconds(properties.accessTokenSeconds()))
+                .expiresAt(expiresAt)
                 .build();
-        return encoder.encode(JwtEncoderParameters
-                        .from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
-                .getTokenValue();
+        return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims));
     }
 }

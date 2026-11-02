@@ -2,7 +2,6 @@ package com.chatsocial.service;
 
 import com.chatsocial.dto.auth.*;
 import com.chatsocial.dto.user.UserResponse;
-import com.chatsocial.config.JwtProperties;
 import com.chatsocial.entity.*;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
@@ -12,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 
 @Service
 public class AuthService {
@@ -19,16 +20,16 @@ public class AuthService {
     private final UserProfileRepository profiles;
     private final PasswordEncoder passwords;
     private final JwtService tokens;
-    private final JwtProperties properties;
+    private final UserSessionService sessions;
     private final String dummyPasswordHash;
 
     public AuthService(UserRepository users, UserProfileRepository profiles, PasswordEncoder passwords,
-                       JwtService tokens, JwtProperties properties) {
+                       JwtService tokens, UserSessionService sessions) {
         this.users = users;
         this.profiles = profiles;
         this.passwords = passwords;
         this.tokens = tokens;
-        this.properties = properties;
+        this.sessions = sessions;
         this.dummyPasswordHash = passwords.encode("dummy-password-for-timing");
     }
 
@@ -44,8 +45,8 @@ public class AuthService {
         return UserResponse.from(user, profile);
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
+    @Transactional
+    public AuthResponse login(LoginRequest request, String userAgent) {
         User user = users.findByEmail(request.email()).orElse(null);
         String hash = user == null ? dummyPasswordHash : user.getPasswordHash();
         // Avoid BCrypt's byte limit exception for multibyte input.
@@ -57,8 +58,22 @@ public class AuthService {
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is not active");
         }
-        return new AuthResponse(tokens.createAccessToken(user.getId()), "Bearer",
-                properties.accessTokenSeconds(), userResponse(user));
+        return authResponse(sessions.create(user, userAgent));
+    }
+
+    @Transactional(noRollbackFor = com.chatsocial.exception.RefreshTokenReuseException.class)
+    public AuthResponse refresh(RefreshTokenRequest request) {
+        return authResponse(sessions.refresh(request.refreshToken()));
+    }
+
+    private AuthResponse authResponse(UserSessionService.SessionTokens sessionTokens) {
+        UserSession session = sessionTokens.session();
+        User user = session.getUser();
+        var accessToken = tokens.createAccessToken(user.getId(), session.getId(), session.getExpiresAt());
+        return new AuthResponse(accessToken.getTokenValue(), "Bearer",
+                Duration.between(accessToken.getIssuedAt(), accessToken.getExpiresAt()).getSeconds(),
+                sessionTokens.refreshToken(), Math.max(0, Duration.between(Instant.now(), session.getExpiresAt()).getSeconds()),
+                session.getId(), userResponse(user));
     }
 
     @Transactional(readOnly = true)
