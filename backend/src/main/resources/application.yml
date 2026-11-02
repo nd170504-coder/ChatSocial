@@ -6,18 +6,21 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 5
       minimum-idle: 1
+      connection-timeout: 30000
 
-    jpa:
-      open-in-view: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
       hibernate:
-        ddl-auto: update
-      properties:
-        hibernate:
-          default_schema: chatsocial
-          format_sql: true
+        default_schema: chatsocial
+        format_sql: true
 
 server:
-    port: 8080
+  port: 8080
