@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: chatsocial
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+    jpa:
+      open-in-view: false
+      hibernate:
+        ddl-auto: update
+      properties:
+        hibernate:
+          default_schema: chatsocial
+          format_sql: true
+
+server:
+    port: 8080
