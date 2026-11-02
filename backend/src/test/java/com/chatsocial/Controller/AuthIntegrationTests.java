@@ -18,6 +18,13 @@ import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mail.javamail.JavaMailSender;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.Session;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.chatsocial.entity.UserProfile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,6 +51,8 @@ class AuthIntegrationTests {
     @MockitoSpyBean JwtService jwtService;
     @Autowired UserSessionRepository sessions;
     @Autowired UserRefreshTokenRepository refreshTokens;
+    @Autowired EmailVerificationRepository verifications;
+    @MockitoBean JavaMailSender mailSender;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtEncoder encoder;
     @Autowired JwtProperties jwtProperties;
@@ -53,10 +62,205 @@ class AuthIntegrationTests {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        when(mailSender.createMimeMessage()).thenAnswer(invocation -> new MimeMessage(Session.getInstance(new java.util.Properties())));
         refreshTokens.deleteAll();
         sessions.deleteAll();
+        verifications.deleteAll();
         profiles.deleteAll();
         users.deleteAll();
+    }
+
+    @Test
+    void registrationSendsMimeEmailAndRequiresVerificationBeforeLogin() throws Exception {
+        JsonNode pending = registerPending(" Alice@example.com ", "alice", "password123");
+        assertEquals("PENDING_VERIFICATION", pending.get("status").asText());
+        login("alice@example.com", "password123", 403);
+        assertEquals(0, sessions.count());
+        MimeMessage message = lastEmail();
+        message.saveChanges();
+        assertTrue(message.isMimeType("multipart/*"));
+        assertEquals("ChatSocial - Xác minh tài khoản", message.getSubject());
+        assertEquals("alice@example.com", message.getAllRecipients()[0].toString());
+        String contents = emailContents(message);
+        assertTrue(contents.contains("<html"));
+        assertTrue(contents.contains("Xác minh địa chỉ email"));
+        assertTrue(contents.contains("5 phút"));
+        String code = lastOtp();
+        var verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        assertEquals(64, verification.getCodeHash().length());
+        assertNotEquals(code, verification.getCodeHash());
+        verifyEmail(" ALICE@example.com ", code, 200);
+        assertEquals(UserStatus.ACTIVE, users.findByEmail("alice@example.com").orElseThrow().getStatus());
+        assertNotNull(verifications.findByUserId(pending.get("id").asText()).orElseThrow().getConsumedAt());
+        verifyEmail("alice@example.com", code, 400);
+        login("alice@example.com", "password123", 200);
+    }
+
+    @Test
+    void wrongOtpAttemptsPersistAndLockCodeEvenIfCorrectCodeIsLaterProvided() throws Exception {
+        JsonNode pending = registerPending("alice@example.com", "alice", "password123");
+        String correct = lastOtp();
+        String wrong = correct.equals("000000") ? "111111" : "000000";
+        for (int count = 1; count <= 5; count++) {
+            verifyEmail("alice@example.com", wrong, count == 5 ? 429 : 400);
+            assertEquals(count, verifications.findByUserId(pending.get("id").asText()).orElseThrow().getFailedAttempts());
+        }
+        verifyEmail("alice@example.com", correct, 429);
+        assertEquals(UserStatus.PENDING_VERIFICATION, users.findByEmail("alice@example.com").orElseThrow().getStatus());
+        var verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        verification.setLastSentAt(Instant.now().minusSeconds(61));
+        verifications.saveAndFlush(verification);
+        resend("alice@example.com", 202);
+        assertEquals(0, verifications.findByUserId(pending.get("id").asText()).orElseThrow().getFailedAttempts());
+        verifyEmail("alice@example.com", lastOtp(), 200);
+    }
+
+    @Test
+    void expiredCodeCannotActivateAccount() throws Exception {
+        JsonNode pending = registerPending("alice@example.com", "alice", "password123");
+        String code = lastOtp();
+        var verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        verification.setExpiresAt(Instant.now().minusSeconds(1));
+        verifications.saveAndFlush(verification);
+        verifyEmail("alice@example.com", code, 400);
+        login("alice@example.com", "password123", 403);
+    }
+
+    @Test
+    void resendHonorsCooldownHourlyLimitAndInvalidatesPreviousOtp() throws Exception {
+        JsonNode pending = registerPending("alice@example.com", "alice", "password123");
+        String oldCode = lastOtp();
+        resend("alice@example.com", 202);
+        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        var verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        verification.setLastSentAt(Instant.now().minusSeconds(61));
+        verifications.saveAndFlush(verification);
+        resend("alice@example.com", 202);
+        String newCode = lastOtp();
+        assertNotEquals(oldCode, newCode);
+        verifyEmail("alice@example.com", oldCode, 400);
+        verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        verification.setSendCount(5);
+        verification.setLastSentAt(Instant.now().minusSeconds(61));
+        verifications.saveAndFlush(verification);
+        resend("alice@example.com", 202);
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
+        verification.setSendWindowStartedAt(Instant.now().minusSeconds(3601));
+        verifications.saveAndFlush(verification);
+        resend("alice@example.com", 202);
+        assertEquals(1, verifications.findByUserId(pending.get("id").asText()).orElseThrow().getSendCount());
+        verifyEmail("alice@example.com", lastOtp(), 200);
+    }
+
+    @Test
+    void resendForMissingOrVerifiedOrDisabledAccountDoesNotSendEmail() throws Exception {
+        resend("missing@example.com", 202);
+        verify(mailSender, never()).send(any(MimeMessage.class));
+        register("alice@example.com", "alice", "password123");
+        resend("alice@example.com", 202);
+        var user = users.findByEmail("alice@example.com").orElseThrow();
+        user.setStatus(UserStatus.DISABLED);
+        users.saveAndFlush(user);
+        resend("alice@example.com", 202);
+        verifyEmail("alice@example.com", lastOtp(), 400);
+        verify(mailSender, times(1)).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void smtpFailureKeepsPendingAccountAndCanRecoverThroughResend() throws Exception {
+        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
+                .when(mailSender).send(any(MimeMessage.class));
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(registration("alice@example.com", "alice", "password123")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value("Unable to send verification email; please request a new code later"));
+        var user = users.findByEmail("alice@example.com").orElseThrow();
+        assertEquals(UserStatus.PENDING_VERIFICATION, user.getStatus());
+        assertTrue(profiles.findByUserId(user.getId()).isPresent());
+        var verification = verifications.findByUserId(user.getId()).orElseThrow();
+        verification.setLastSentAt(Instant.now().minusSeconds(61));
+        verifications.saveAndFlush(verification);
+        doNothing().when(mailSender).send(any(MimeMessage.class));
+        resend("alice@example.com", 202);
+        verifyEmail("alice@example.com", lastOtp(), 200);
+        login("alice@example.com", "password123", 200);
+    }
+
+    @Test
+    void verificationValidatesInputAndDoesNotAcceptAnotherAccountsCode() throws Exception {
+        registerPending("alice@example.com", "alice", "password123");
+        String aliceCode = lastOtp();
+        JsonNode bob = registerPending("bob@example.com", "bob", "password123");
+        // Distinct user-bound hashes even if independently generated codes happened to match.
+        assertNotEquals(verifications.findByUserId(users.findByEmail("alice@example.com").orElseThrow().getId()).orElseThrow().getCodeHash(),
+                verifications.findByUserId(bob.get("id").asText()).orElseThrow().getCodeHash());
+        if (!aliceCode.equals(lastOtp())) verifyEmail("bob@example.com", aliceCode, 400);
+        verifyEmail("alice@example.com", "123", 400);
+        verifyEmail("alice@example.com", "abcdef", 400);
+        verifyEmail("missing@example.com", "123456", 400);
+        mvc.perform(post("/api/auth/verify-email").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void simultaneousVerificationOnlyConsumesCodeOnce() throws Exception {
+        registerPending("alice@example.com", "alice", "password123");
+        String code = lastOtp();
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Integer> task = () -> {
+                start.await();
+                return mvc.perform(post("/api/auth/verify-email").contentType(MediaType.APPLICATION_JSON)
+                                .content(json.writeValueAsString(java.util.Map.of("email", "alice@example.com", "otp", code))))
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = pool.submit(task);
+            var second = pool.submit(task);
+            start.countDown();
+            var statuses = java.util.List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(15, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(statuses.contains(200));
+            assertTrue(statuses.contains(400));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private void verifyEmail(String email, String code, int expectedStatus) throws Exception {
+        mvc.perform(post("/api/auth/verify-email").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("email", email, "otp", code))))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    private void resend(String email, int expectedStatus) throws Exception {
+        mvc.perform(post("/api/auth/resend-verification").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("email", email))))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    private MimeMessage lastEmail() {
+        var captor = ArgumentCaptor.forClass(MimeMessage.class);
+        verify(mailSender, atLeastOnce()).send(captor.capture());
+        return captor.getValue();
+    }
+
+    private String lastOtp() throws Exception {
+        var match = java.util.regex.Pattern.compile("(?<![0-9])[0-9]{6}(?![0-9])").matcher(emailContents(lastEmail()));
+        assertTrue(match.find(), "MIME email must contain a six-digit code");
+        return match.group();
+    }
+
+    private String emailContents(Part part) throws Exception {
+        Object content = part.getContent();
+        if (content instanceof String text) return text;
+        if (content instanceof Multipart multipart) {
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < multipart.getCount(); i++) text.append(emailContents(multipart.getBodyPart(i)));
+            return text.toString();
+        }
+        return "";
     }
 
     @Test
@@ -483,6 +687,8 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.paths['/api/auth/register'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/verify-email'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/resend-verification'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/users/me'].get.parameters").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['200'].content['application/json'].schema['$ref']").exists());
@@ -502,10 +708,16 @@ class AuthIntegrationTests {
     }
 
     private JsonNode register(String email, String username, String password) throws Exception {
+        JsonNode registered = registerPending(email, username, password);
+        verifyEmail(registered.get("email").asText(), lastOtp(), 200);
+        return registered;
+    }
+
+    private JsonNode registerPending(String email, String username, String password) throws Exception {
         String body = mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(registration(email, username, password)))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Registration successful"))
+                .andExpect(jsonPath("$.message").value("Registration received; check your email for verification"))
                 .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("data");

@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,28 +24,38 @@ public class AuthService {
     private final JwtService tokens;
     private final UserSessionService sessions;
     private final String dummyPasswordHash;
+    private final EmailVerificationService verification;
+    private final TransactionTemplate transactions;
 
     public AuthService(UserRepository users, UserProfileRepository profiles, PasswordEncoder passwords,
-                       JwtService tokens, UserSessionService sessions) {
+                       JwtService tokens, UserSessionService sessions, EmailVerificationService verification,
+                       PlatformTransactionManager transactionManager) {
         this.users = users;
         this.profiles = profiles;
         this.passwords = passwords;
         this.tokens = tokens;
         this.sessions = sessions;
+        this.verification = verification;
+        this.transactions = new TransactionTemplate(transactionManager);
         this.dummyPasswordHash = passwords.encode("dummy-password-for-timing");
     }
 
-    @Transactional
     public UserResponse register(RegisterRequest request) {
-        if (users.existsByEmail(request.email()) || users.existsByUsername(request.username())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Email or username already exists");
-        }
-        User user = users.saveAndFlush(new User(null, request.email(), passwords.encode(request.password()),
-                request.username(), UserStatus.ACTIVE, null, null));
-        UserProfile profile = profiles.saveAndFlush(new UserProfile(null, user, request.fullName(),
-                null, null, null, null, null));
-        return UserResponse.from(user, profile);
+        Registration result = java.util.Objects.requireNonNull(transactions.execute(status -> {
+            if (users.existsByEmail(request.email()) || users.existsByUsername(request.username())) {
+                throw new ApiException(HttpStatus.CONFLICT, "Email or username already exists");
+            }
+            User user = users.saveAndFlush(new User(null, request.email(), passwords.encode(request.password()),
+                    request.username(), UserStatus.PENDING_VERIFICATION, null, null));
+            UserProfile profile = profiles.saveAndFlush(new UserProfile(null, user, request.fullName(),
+                    null, null, null, null, null));
+            return new Registration(UserResponse.from(user, profile), verification.issueInitial(user));
+        }));
+        verification.deliver(result.code());
+        return result.user();
     }
+
+    private record Registration(UserResponse user, EmailVerificationService.IssuedCode code) {}
 
     @Transactional
     public AuthResponse login(LoginRequest request, String userAgent) {
@@ -56,7 +68,8 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Account is not active");
+            throw new ApiException(HttpStatus.FORBIDDEN, user.getStatus() == UserStatus.PENDING_VERIFICATION
+                    ? "Email verification is required" : "Account is not active");
         }
         return authResponse(sessions.create(user, userAgent));
     }
