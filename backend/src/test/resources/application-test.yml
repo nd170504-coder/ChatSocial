@@ -16,3 +16,7 @@ app:
     access-token-seconds: 10800
   cors:
     allowed-origins: http://localhost:5173
+  supabase:
+    url: https://storage.example
+    secret-key: test-secret-not-a-real-key
+    bucket: profile-images

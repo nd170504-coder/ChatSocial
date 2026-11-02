@@ -1,6 +1,10 @@
 package com.chatsocial.Controller;
 
 import com.chatsocial.config.JwtProperties;
+import com.chatsocial.enums.ProfileImageType;
+import com.chatsocial.service.SupabaseStorageService;
+import com.chatsocial.service.SupabaseStorageService.StoredImage;
+import org.springframework.mock.web.MockMultipartFile;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.repository.*;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
@@ -35,6 +39,7 @@ class AuthIntegrationTests {
     @Autowired WebApplicationContext context;
     @MockitoSpyBean UserRepository users;
     @MockitoSpyBean UserProfileRepository profiles;
+    @MockitoSpyBean SupabaseStorageService storage;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtEncoder encoder;
     @Autowired JwtProperties jwtProperties;
@@ -162,6 +167,128 @@ class AuthIntegrationTests {
     }
 
     @Test
+    void profilePatchPreservesOmittedFieldsClearsNullableFieldsAndCannotEditAnotherUser() throws Exception {
+        String aliceId = register("alice@example.com", "alice", "password123").get("id").asText();
+        String bobId = register("bob@example.com", "bob", "password123").get("id").asText();
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        mvc.perform(get("/api/users/me/profile")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/users/me/profile").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.userId").value(aliceId));
+        mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"fullName":" Alice Updated ","bio":" Hello ","dateOfBirth":"2000-05-20","gender":"FEMALE"}
+                                """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Alice Updated"))
+                .andExpect(jsonPath("$.data.bio").value("Hello"))
+                .andExpect(jsonPath("$.data.dateOfBirth").value("2000-05-20"))
+                .andExpect(jsonPath("$.data.gender").value("FEMALE"));
+        mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"bio":null,"dateOfBirth":null,"gender":null,"userId":"%s","avatarUrl":"https://untrusted.example/a.jpg"}
+                                """.formatted(bobId)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Alice Updated"))
+                .andExpect(jsonPath("$.data.bio").isEmpty()).andExpect(jsonPath("$.data.dateOfBirth").isEmpty())
+                .andExpect(jsonPath("$.data.gender").isEmpty()).andExpect(jsonPath("$.data.avatarUrl").isEmpty());
+        assertEquals("Alice Nguyen", profiles.findByUserId(bobId).orElseThrow().getFullName());
+        assertNull(profiles.findByUserId(aliceId).orElseThrow().getAvatarUrl());
+    }
+
+    @Test
+    void invalidProfileChangesDoNotChangeStoredProfile() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        for (String body : new String[]{"{\"fullName\":null}", "{\"fullName\":\"  \"}",
+                "{\"dateOfBirth\":\"2999-01-01\"}", "{\"gender\":\"INVALID\"}",
+                json.writeValueAsString(java.util.Map.of("bio", "x".repeat(1001)))}) {
+            mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        assertEquals("Alice Nguyen", profiles.findByUserId(id).orElseThrow().getFullName());
+    }
+
+    @Test
+    void avatarAndCoverAreUploadedForCurrentUserAndOldAvatarIsCleanedUp() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        String avatarPath = id + "/avatars/00000000-0000-0000-0000-000000000001.png";
+        String newAvatarPath = id + "/avatars/00000000-0000-0000-0000-000000000002.png";
+        String coverPath = id + "/covers/00000000-0000-0000-0000-000000000003.png";
+        doReturn(stored(avatarPath), stored(newAvatarPath)).when(storage)
+                .upload(eq(id), eq(ProfileImageType.AVATAR), any());
+        doReturn(stored(coverPath)).when(storage).upload(eq(id), eq(ProfileImageType.COVER), any());
+        doNothing().when(storage).delete(anyString());
+        mvc.perform(multipart("/api/users/me/profile/avatar").file(pngFile())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.avatarUrl").value(stored(avatarPath).url()));
+        mvc.perform(multipart("/api/users/me/profile/cover").file(pngFile())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.coverUrl").value(stored(coverPath).url()));
+        mvc.perform(multipart("/api/users/me/profile/avatar").file(pngFile())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.avatarUrl").value(stored(newAvatarPath).url()))
+                .andExpect(jsonPath("$.data.coverUrl").value(stored(coverPath).url()));
+        verify(storage).delete(avatarPath);
+        verify(storage, never()).delete(coverPath);
+        assertEquals(stored(newAvatarPath).url(), profiles.findByUserId(id).orElseThrow().getAvatarUrl());
+    }
+
+    @Test
+    void invalidImageUploadsNeverReachStorage() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        mvc.perform(multipart("/api/users/me/profile/avatar").file(pngFile()))
+                .andExpect(status().isUnauthorized());
+        for (MockMultipartFile file : new MockMultipartFile[]{
+                new MockMultipartFile("file", "empty.png", "image/png", new byte[0]),
+                new MockMultipartFile("file", "fake.png", "image/png", "not an image".getBytes()),
+                new MockMultipartFile("file", "large.png", "image/png", new byte[5 * 1024 * 1024 + 1]),
+                new MockMultipartFile("file", "wrong.jpg", "image/jpeg", pngFile().getBytes())}) {
+            mvc.perform(multipart("/api/users/me/profile/avatar").file(file)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(result -> assertTrue(java.util.Set.of(400, 413, 415)
+                            .contains(result.getResponse().getStatus())));
+        }
+        verify(storage, never()).upload(anyString(), any(), any());
+    }
+
+    @Test
+    void storageFailurePreservesPreviousProfile() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        doThrow(new com.chatsocial.exception.ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                "Supabase Storage request failed")).when(storage).upload(eq(id), any(), any());
+        mvc.perform(multipart("/api/users/me/profile/avatar").file(pngFile())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadGateway());
+        assertNull(profiles.findByUserId(id).orElseThrow().getAvatarUrl());
+    }
+
+    @Test
+    void databaseFailureAfterUploadRollsBackUrlAndCleansUpNewObject() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
+        String path = id + "/avatars/00000000-0000-0000-0000-000000000001.png";
+        doReturn(stored(path)).when(storage).upload(eq(id), any(), any());
+        doNothing().when(storage).delete(path);
+        doThrow(new DataIntegrityViolationException("private database detail")).when(profiles).flush();
+        mvc.perform(multipart("/api/users/me/profile/avatar").file(pngFile())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isInternalServerError());
+        assertNull(profiles.findByUserId(id).orElseThrow().getAvatarUrl());
+        verify(storage).delete(path);
+    }
+
+    private StoredImage stored(String path) {
+        return new StoredImage(path, "https://storage.example/storage/v1/object/public/profile-images/" + path);
+    }
+
+    private MockMultipartFile pngFile() {
+        return new MockMultipartFile("file", "avatar.png", "image/png", Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM1kAAAAASUVORK5CYII="));
+    }
+
+    @Test
     void swaggerIsPublicAndDocumentsBearerAuthentication() throws Exception {
         mvc.perform(get("/swagger-ui.html"))
                 .andExpect(status().is3xxRedirection());
@@ -175,6 +302,12 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.info.title").value("ChatSocial API"))
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.passwordWithinByteLimit").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.RegisterRequest.properties.password").exists())
+                .andExpect(jsonPath("$.components.schemas.UpdateProfileRequest.properties.providedFields").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.UpdateProfileRequest.properties.fullNameValid").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/users/me/profile'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/users/me/profile'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/users/me/profile/avatar'].post.requestBody.content['multipart/form-data']").exists())
+                .andExpect(jsonPath("$.paths['/api/users/me/profile/cover'].post.requestBody.content['multipart/form-data']").exists())
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
                 .andExpect(jsonPath("$.security[0].bearerAuth").isArray())
