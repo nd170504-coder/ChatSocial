@@ -24,6 +24,25 @@ class SecurityUtilsTests {
     }
 
     @Test
+    void returnsSessionIdFromAuthenticatedJwt() {
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "HS256")
+                .subject("user-123").claim("sid", "session-123").build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
+        assertEquals("session-123", SecurityUtils.getCurrentSessionId());
+    }
+
+    @Test
+    void rejectsMissingOrNonStringSessionId() {
+        for (Object sessionId : new Object[]{null, " ", 123}) {
+            Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "HS256")
+                    .subject("user-123").claim("sid", sessionId).build();
+            SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
+            ApiException exception = assertThrows(ApiException.class, SecurityUtils::getCurrentSessionId);
+            assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatus());
+        }
+    }
+
+    @Test
     void rejectsMissingAuthentication() {
         SecurityContextHolder.clearContext();
         assertUnauthorized();

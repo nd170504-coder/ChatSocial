@@ -12,16 +12,28 @@ public final class SecurityUtils {
 
     /** Returns the subject of the JWT already authenticated for the current request. */
     public static String getCurrentUserId() {
+        String userId = currentJwtAuthentication().getToken().getSubject();
+        if (userId == null || userId.isBlank()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Token subject is missing");
+        }
+        return userId;
+    }
+
+    public static String getCurrentSessionId() {
+        Object sessionId = currentJwtAuthentication().getToken().getClaims().get("sid");
+        if (!(sessionId instanceof String id) || id.isBlank()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Token session is missing");
+        }
+        return id;
+    }
+
+    private static JwtAuthenticationToken currentJwtAuthentication() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)
                 || !jwtAuthentication.isAuthenticated()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "JWT authentication is required");
         }
 
-        String userId = jwtAuthentication.getToken().getSubject();
-        if (userId == null || userId.isBlank()) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Token subject is missing");
-        }
-        return userId;
+        return jwtAuthentication;
     }
 }

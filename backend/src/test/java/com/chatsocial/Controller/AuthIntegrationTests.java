@@ -4,6 +4,7 @@ import com.chatsocial.config.JwtProperties;
 import com.chatsocial.enums.ProfileImageType;
 import com.chatsocial.service.SupabaseStorageService;
 import com.chatsocial.service.SupabaseStorageService.StoredImage;
+import com.chatsocial.service.JwtService;
 import org.springframework.mock.web.MockMultipartFile;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.repository.*;
@@ -40,6 +41,9 @@ class AuthIntegrationTests {
     @MockitoSpyBean UserRepository users;
     @MockitoSpyBean UserProfileRepository profiles;
     @MockitoSpyBean SupabaseStorageService storage;
+    @MockitoSpyBean JwtService jwtService;
+    @Autowired UserSessionRepository sessions;
+    @Autowired UserRefreshTokenRepository refreshTokens;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtEncoder encoder;
     @Autowired JwtProperties jwtProperties;
@@ -49,6 +53,8 @@ class AuthIntegrationTests {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        refreshTokens.deleteAll();
+        sessions.deleteAll();
         profiles.deleteAll();
         users.deleteAll();
     }
@@ -153,17 +159,180 @@ class AuthIntegrationTests {
     @Test
     void missingMalformedExpiredWrongSignatureAndWrongIssuerTokensAreRejected() throws Exception {
         String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        String sessionId = login("alice@example.com", "password123", 200).get("sessionId").asText();
         mvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(header().string("WWW-Authenticate", "Bearer"));
         JwtEncoder otherKey = new NimbusJwtEncoder(new ImmutableSecret<>(
                 Base64.getDecoder().decode("YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=")));
-        for (String token : new String[]{"invalid.jwt", token(encoder, id, jwtProperties.issuer(), -120),
-                token(otherKey, id, jwtProperties.issuer(), 900), token(encoder, id, "wrong-issuer", 900),
-                token(encoder, "missing-user", jwtProperties.issuer(), 900)}) {
+        for (String token : new String[]{"invalid.jwt", token(encoder, id, sessionId, jwtProperties.issuer(), -120),
+                token(otherKey, id, sessionId, jwtProperties.issuer(), 900), token(encoder, id, sessionId, "wrong-issuer", 900),
+                token(encoder, "missing-user", sessionId, jwtProperties.issuer(), 900),
+                token(encoder, id, "missing-session", jwtProperties.issuer(), 900),
+                token(encoder, id, null, jwtProperties.issuer(), 900)}) {
             mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + token))
                     .andExpect(status().isUnauthorized());
         }
+    }
+
+    @Test
+    void loginCreatesSessionStoresOnlyHashAndRecordsUserAgent() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        var session = sessions.findById(auth.get("sessionId").asText()).orElseThrow();
+        assertEquals("TestBrowser Desktop", session.getUserAgent());
+        assertNull(session.getLastUsedAt());
+        assertNull(session.getRevokedAt());
+        assertEquals(604800, java.time.Duration.between(session.getCreatedAt(), session.getExpiresAt()).getSeconds());
+        var saved = refreshTokens.findAll().get(0);
+        assertEquals(64, saved.getTokenHash().length());
+        assertNotEquals(auth.get("refreshToken").asText(), saved.getTokenHash());
+        assertEquals(43, auth.get("refreshToken").asText().length());
+        assertTrue(auth.get("refreshExpiresIn").asLong() > 604700);
+    }
+
+    @Test
+    void refreshRotatesTokensAndKeepsFixedSessionExpiry() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode first = login("alice@example.com", "password123", 200);
+        String id = first.get("sessionId").asText();
+        Instant expires = sessions.findById(id).orElseThrow().getExpiresAt();
+        JsonNode next = refresh(first.get("refreshToken").asText(), 200);
+        assertEquals(id, next.get("sessionId").asText());
+        assertNotEquals(first.get("refreshToken"), next.get("refreshToken"));
+        assertNotEquals(first.get("accessToken"), next.get("accessToken"));
+        assertEquals(expires, sessions.findById(id).orElseThrow().getExpiresAt());
+        assertNotNull(sessions.findById(id).orElseThrow().getLastUsedAt());
+        assertEquals(2, refreshTokens.count());
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + next.get("accessToken").asText()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void replayOfEvenOlderRefreshTokenRevokesEntireSessionAndCommitsRevocation() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode first = login("alice@example.com", "password123", 200);
+        JsonNode second = refresh(first.get("refreshToken").asText(), 200);
+        JsonNode third = refresh(second.get("refreshToken").asText(), 200);
+        refresh(first.get("refreshToken").asText(), 401);
+        assertNotNull(sessions.findById(first.get("sessionId").asText()).orElseThrow().getRevokedAt());
+        refresh(third.get("refreshToken").asText(), 401);
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + third.get("accessToken").asText()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void logoutRevokesCurrentDeviceButLeavesOtherSessionUsable() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode desktop = login("alice@example.com", "password123", 200);
+        JsonNode phone = login("alice@example.com", "password123", 200);
+        assertNotEquals(desktop.get("sessionId"), phone.get("sessionId"));
+        mvc.perform(post("/api/auth/logout")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + desktop.get("accessToken").asText()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + desktop.get("accessToken").asText()))
+                .andExpect(status().isUnauthorized());
+        refresh(desktop.get("refreshToken").asText(), 401);
+        refresh(phone.get("refreshToken").asText(), 200);
+    }
+
+    @Test
+    void expiredSessionAndInactiveUserCannotRefresh() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        var session = sessions.findById(auth.get("sessionId").asText()).orElseThrow();
+        session.setExpiresAt(Instant.now().minusSeconds(1));
+        sessions.saveAndFlush(session);
+        refresh(auth.get("refreshToken").asText(), 401);
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + auth.get("accessToken").asText()))
+                .andExpect(status().isUnauthorized());
+        JsonNode active = login("alice@example.com", "password123", 200);
+        var user = users.findByEmail("alice@example.com").orElseThrow();
+        user.setStatus(UserStatus.DISABLED);
+        users.saveAndFlush(user);
+        refresh(active.get("refreshToken").asText(), 401);
+    }
+
+    @Test
+    void refreshWorksWithoutAccessTokenEvenWhenPreviousAccessTokenExpired() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        String expired = token(encoder, id, auth.get("sessionId").asText(), jwtProperties.issuer(), -120);
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + expired))
+                .andExpect(status().isUnauthorized());
+        refresh(auth.get("refreshToken").asText(), 200);
+    }
+
+    @Test
+    void malformedAndUnknownRefreshTokensDoNotCreateSessions() throws Exception {
+        mvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        refresh("malformed", 400);
+        refresh("x".repeat(43), 401);
+        assertEquals(0, sessions.count());
+        assertEquals(0, refreshTokens.count());
+    }
+
+    @Test
+    void refreshRollsBackRotationIfAccessTokenIssuanceFails() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        doThrow(new IllegalStateException("simulated signing failure")).when(jwtService)
+                .createAccessToken(anyString(), anyString(), any());
+        refresh(auth.get("refreshToken").asText(), 500);
+        assertEquals(1, refreshTokens.count());
+        assertNull(refreshTokens.findAll().get(0).getConsumedAt());
+        doCallRealMethod().when(jwtService).createAccessToken(anyString(), anyString(), any());
+        refresh(auth.get("refreshToken").asText(), 200);
+    }
+
+    @Test
+    void refreshedAccessTokenCannotOutliveSession() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        var session = sessions.findById(auth.get("sessionId").asText()).orElseThrow();
+        session.setExpiresAt(Instant.now().plusSeconds(120).truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+        sessions.saveAndFlush(session);
+        JsonNode next = refresh(auth.get("refreshToken").asText(), 200);
+        assertTrue(next.get("expiresIn").asLong() <= 120);
+        assertTrue(next.get("expiresIn").asLong() > 0);
+        assertTrue(next.get("refreshExpiresIn").asLong() <= 120);
+    }
+
+    @Test
+    void simultaneousRefreshRequestsCannotBothUseSameToken() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Integer> task = () -> {
+                start.await();
+                return mvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                                .content(json.writeValueAsString(java.util.Map.of("refreshToken", auth.get("refreshToken").asText()))))
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = pool.submit(task);
+            var second = pool.submit(task);
+            start.countDown();
+            var results = java.util.List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(15, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(results.contains(200));
+            assertTrue(results.contains(401));
+            assertEquals(2, refreshTokens.count());
+            assertNotNull(sessions.findById(auth.get("sessionId").asText()).orElseThrow().getRevokedAt());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private JsonNode refresh(String rawToken, int expectedStatus) throws Exception {
+        var result = mvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("refreshToken", rawToken))))
+                .andExpect(status().is(expectedStatus));
+        if (expectedStatus == 200) result.andExpect(header().string("Cache-Control", "no-store"));
+        JsonNode body = json.readTree(result.andReturn().getResponse().getContentAsString());
+        return expectedStatus == 200 ? body.get("data") : body;
     }
 
     @Test
@@ -313,6 +482,8 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/auth/register'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/logout'].post.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/users/me'].get.parameters").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['200'].content['application/json'].schema['$ref']").exists());
         mvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
@@ -342,12 +513,15 @@ class AuthIntegrationTests {
 
     private JsonNode login(String email, String password, int expectedStatus) throws Exception {
         var result = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .header("User-Agent", "TestBrowser Desktop")
                         .content(json.writeValueAsString(java.util.Map.of("email", email, "password", password))))
                 .andExpect(status().is(expectedStatus));
         if (expectedStatus == 200) {
             result.andExpect(jsonPath("$.success").value(true))
                     .andExpect(jsonPath("$.message").value("Login successful"))
                     .andExpect(jsonPath("$.data.accessToken").isString())
+                    .andExpect(jsonPath("$.data.refreshToken").isString())
+                    .andExpect(header().string("Cache-Control", "no-store"))
                     .andExpect(jsonPath("$.data.user.passwordHash").doesNotExist());
         }
         JsonNode body = json.readTree(result.andReturn().getResponse().getContentAsString());
@@ -359,10 +533,12 @@ class AuthIntegrationTests {
                 "password", password, "fullName", " Alice Nguyen "));
     }
 
-    private String token(JwtEncoder signer, String subject, String issuer, long expiresIn) {
+    private String token(JwtEncoder signer, String subject, String sessionId, String issuer, long expiresIn) {
         Instant now = Instant.now();
+        var claims = JwtClaimsSet.builder().subject(subject).issuer(issuer).issuedAt(now.minusSeconds(300))
+                .expiresAt(now.plusSeconds(expiresIn));
+        if (sessionId != null) claims.claim("sid", sessionId);
         return signer.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(),
-                JwtClaimsSet.builder().subject(subject).issuer(issuer).issuedAt(now.minusSeconds(300))
-                        .expiresAt(now.plusSeconds(expiresIn)).build())).getTokenValue();
+                claims.build())).getTokenValue();
     }
 }
