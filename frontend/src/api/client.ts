@@ -43,7 +43,8 @@ export async function apiRequest<T>(
   if (!response.ok) {
     let problem: ApiProblem | undefined
     try {
-      problem = await response.json()
+      const body: unknown = await response.json()
+      if (body && typeof body === 'object') problem = body as ApiProblem
     } catch {
       // Một số proxy trả lỗi không có JSON; vẫn giữ HTTP status.
     }
