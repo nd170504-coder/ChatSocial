@@ -95,6 +95,10 @@ export async function authenticatedRequest<T>(
 export const authStore = {
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
   getSnapshot: () => snapshot,
+  updateFullName(userId: string, fullName: string) {
+    if (snapshot.session?.user.id !== userId) return
+    save({ ...snapshot.session, user: { ...snapshot.session.user, fullName } })
+  },
   async login(request: LoginRequest) {
     const response = await authApi.login(request)
     revision++
