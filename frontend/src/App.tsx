@@ -1,11 +1,11 @@
+import { useEffect } from 'react'
+import { BrowserRouter } from 'react-router'
+import { AppRouter } from './app/router'
+import { authStore } from './features/auth/session'
+
 function App() {
-  return (
-    <main>
-      <img src="/chatsocial.svg" alt="Logo ChatSocial" width={80} height={80} />
-      <h1>ChatSocial</h1>
-      <p>Frontend đã sẵn sàng.</p>
-    </main>
-  );
+  useEffect(() => { void authStore.initialize() }, [])
+  return <BrowserRouter><AppRouter /></BrowserRouter>
 }
 
-export default App;
+export default App
