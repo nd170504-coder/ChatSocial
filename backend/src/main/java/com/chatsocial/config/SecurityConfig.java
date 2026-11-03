@@ -31,7 +31,7 @@ public class SecurityConfig {
 
     @Bean
     SecretKey jwtSecretKey(JwtProperties properties) {
-        byte[] bytes = Base64.getDecoder().decode(properties.secret());
+        byte[] bytes = Base64.getDecoder().decode(properties.getSecret());
         if (bytes.length < 32) {
             throw new IllegalArgumentException("JWT_SECRET must be Base64 containing at least 32 random bytes");
         }
@@ -47,7 +47,7 @@ public class SecurityConfig {
     JwtDecoder jwtDecoder(SecretKey key, JwtProperties properties) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                new JwtTimestampValidator(Duration.ZERO), new JwtIssuerValidator(properties.issuer()),
+                new JwtTimestampValidator(Duration.ZERO), new JwtIssuerValidator(properties.getIssuer()),
                 jwt -> jwt.getExpiresAt() != null && jwt.getIssuedAt() != null
                         && jwt.getSubject() != null && !jwt.getSubject().isBlank()
                         ? OAuth2TokenValidatorResult.success()

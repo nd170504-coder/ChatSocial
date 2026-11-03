@@ -31,7 +31,7 @@ public class SupabaseStorageService {
         String baseUrl = baseUrl();
         String path = UUID.fromString(userId) + "/" + type.getFolder() + "/" + UUID.randomUUID()
                 + "." + image.extension();
-        HttpRequest request = request(baseUrl + "/storage/v1/object/" + properties.bucket() + "/" + path)
+        HttpRequest request = request(baseUrl + "/storage/v1/object/" + properties.getBucket() + "/" + path)
                 .header("Content-Type", image.contentType()).header("x-upsert", "false")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(image.bytes())).build();
         send(request);
@@ -43,7 +43,7 @@ public class SupabaseStorageService {
         if (path == null || !path.matches("[0-9a-f-]{36}/(avatars|covers)/[0-9a-f-]{36}\\.(jpg|png|webp)")) {
             throw new IllegalArgumentException("Invalid managed image path");
         }
-        HttpRequest request = request(baseUrl() + "/storage/v1/object/" + properties.bucket())
+        HttpRequest request = request(baseUrl() + "/storage/v1/object/" + properties.getBucket())
                 .header("Content-Type", "application/json")
                 .method("DELETE", HttpRequest.BodyPublishers.ofString(
                         json.writeValueAsString(Map.of("prefixes", List.of(path)))))
@@ -61,18 +61,18 @@ public class SupabaseStorageService {
     }
 
     private String publicPrefix() {
-        return baseUrl() + "/storage/v1/object/public/" + properties.bucket() + "/";
+        return baseUrl() + "/storage/v1/object/public/" + properties.getBucket() + "/";
     }
 
     private String baseUrl() {
-        if (properties.url() == null || properties.url().isBlank()
-                || properties.secretKey() == null || properties.secretKey().isBlank()
-                || properties.bucket() == null || !properties.bucket().matches("[a-zA-Z0-9_-]+")) {
+        if (properties.getUrl() == null || properties.getUrl().isBlank()
+                || properties.getSecretKey() == null || properties.getSecretKey().isBlank()
+                || properties.getBucket() == null || !properties.getBucket().matches("[a-zA-Z0-9_-]+")) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Supabase Storage is not configured");
         }
         URI uri;
         try {
-            uri = URI.create(properties.url());
+            uri = URI.create(properties.getUrl());
         } catch (IllegalArgumentException exception) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Supabase Storage URL is invalid");
         }
@@ -81,12 +81,12 @@ public class SupabaseStorageService {
                 || uri.getFragment() != null || !(uri.getPath().isEmpty() || uri.getPath().equals("/"))) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Supabase Storage URL is invalid");
         }
-        return properties.url().replaceAll("/+$", "");
+        return properties.getUrl().replaceAll("/+$", "");
     }
 
     private HttpRequest.Builder request(String url) {
         return HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
-                .header("apikey", properties.secretKey());
+                .header("apikey", properties.getSecretKey());
     }
 
     private void send(HttpRequest request) {

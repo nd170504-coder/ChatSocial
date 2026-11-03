@@ -1,6 +1,17 @@
 package com.chatsocial.dto.auth;
 
 import com.chatsocial.dto.user.UserResponse;
+import lombok.Getter;
+import lombok.AllArgsConstructor;
 
-public record AuthResponse(String accessToken, String tokenType, long expiresIn, String refreshToken,
-                           long refreshExpiresIn, String sessionId, UserResponse user) {}
+@Getter
+@AllArgsConstructor
+public class AuthResponse {
+    private String accessToken;
+    private String tokenType;
+    private long expiresIn;
+    private String refreshToken;
+    private long refreshExpiresIn;
+    private String sessionId;
+    private UserResponse user;
+}

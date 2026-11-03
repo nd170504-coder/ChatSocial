@@ -39,7 +39,7 @@ public class UserSessionService {
         String agent = userAgent == null ? null : userAgent.replaceAll("[\\p{Cntrl}]", "").trim();
         if (agent != null && agent.length() > 512) agent = agent.substring(0, 512);
         UserSession session = sessions.saveAndFlush(new UserSession(user, agent, now,
-                now.plusSeconds(properties.refreshTokenSeconds())));
+                now.plusSeconds(properties.getRefreshTokenSeconds())));
         return new SessionTokens(session, issueRefreshToken(session, now));
     }
 

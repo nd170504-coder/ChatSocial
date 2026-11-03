@@ -1,11 +1,18 @@
 package com.chatsocial.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @ConfigurationProperties(prefix = "app.supabase")
-public record SupabaseProperties(String url, String secretKey, String bucket) {
-    @Override
-    public String toString() {
-        return "SupabaseProperties[credentials redacted]";
-    }
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class SupabaseProperties {
+    private String url;
+    private String secretKey;
+    private String bucket;
 }
