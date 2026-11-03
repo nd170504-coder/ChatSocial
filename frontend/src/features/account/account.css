@@ -1,0 +1,58 @@
+.settings-content { width: 100%; max-width: 1080px; margin: 0 auto; padding: 36px 42px 26px; }
+.settings-page-heading { margin-bottom: 28px; }
+.settings-page-heading .form-eyebrow { margin-bottom: 9px; font-size: 9px; }
+.settings-page-heading h1 { margin: 0 0 10px; font-size: 29px; letter-spacing: -.8px; }
+.settings-page-heading > p { margin: 0; font-size: 12px; color: #8c99ad; line-height: 1.8; }
+.settings-card, .settings-account-summary { border: 1px solid #e6ebf3; background: #fff; border-radius: 14px; padding: 28px; margin-bottom: 22px; }
+.settings-account-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; background: linear-gradient(110deg, #f0f5ff, #fff); }
+.settings-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; background: #edf3ff; color: #5b7cca; }
+.settings-account-summary h2 { font-size: 14px; margin: 0 0 7px; }
+.settings-account-summary p { color: #8c9bb2; font-size: 11px; margin: 0; line-height: 1.8; }
+.settings-account-summary dl { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 18px; padding: 20px 0 0; margin: 4px 0 0; border-top: 1px solid #e4eaf6; }
+.settings-account-summary dt { font-size: 10px; color: #97a3b5; margin-bottom: 7px; }
+.settings-account-summary dd { margin: 0; color: #526581; font-size: 12px; overflow-wrap: anywhere; }
+.settings-card-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.settings-card-heading h2 { margin: 0 0 7px; font-size: 17px; letter-spacing: -.3px; }
+.settings-card-heading p { margin: 0; font-size: 11px; color: #8c99ad; line-height: 1.8; }
+.settings-info { display: flex; align-items: flex-start; gap: 10px; padding: 13px 16px; background: #f6f9ff; color: #7b90b0; border: 1px solid #e7eefc; border-radius: 9px; margin-bottom: 24px; }
+.settings-info svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 2px; }
+.settings-info p { margin: 0; font-size: 11px; line-height: 1.9; }
+.settings-card form > fieldset > .field { max-width: 100%; }
+.settings-card .field { margin-bottom: 22px; }
+.settings-form-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-top: 1px solid #eff2f7; padding-top: 22px; }
+.settings-form-footer > span { color: #9aa6b8; font-size: 10px; line-height: 1.7; }
+.settings-form-footer .button { width: auto; min-height: 42px; font-size: 11px; gap: 8px; }
+.settings-form-footer .button svg { width: 16px; height: 16px; }
+.management-row { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 22px 0; border-top: 1px solid #edf0f6; }
+.management-row:last-child { padding-bottom: 0; }
+.management-row h3 { font-size: 13px; margin: 0 0 8px; }
+.management-row p { font-size: 11px; color: #8b98ac; line-height: 1.9; margin: 0; max-width: 480px; }
+.management-row .button { width: auto; flex-shrink: 0; min-width: 141px; min-height: 40px; font-size: 11px; gap: 7px; }
+.management-row .button svg { width: 15px; height: 15px; }
+.button-outline-warning { background: #fffaf0; border-color: #f0dfbd; color: #a27a35; }
+.button-outline-warning:hover:not(:disabled) { background: #fff3da; }
+.button-outline-danger { background: #fff7f7; border-color: #f2d4d8; color: #bd5362; }
+.button-outline-danger:hover:not(:disabled) { background: #ffebee; }
+.button-danger { color: #fff; background: #c34456; }
+.button-danger:hover:not(:disabled) { background: #ad3546; }
+.button-warning { color: #fff; background: #a77b31; }
+.button-warning:hover:not(:disabled) { background: #8d6525; }
+.settings-footer { display: flex; align-items: center; justify-content: center; gap: 7px; color: #9ba8ba; font-size: 10px; padding: 2px 0 8px; }
+.settings-footer svg { width: 14px; height: 14px; flex-shrink: 0; }
+.account-action-dialog { width: min(490px, calc(100% - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; margin: auto; padding: 28px; border: 1px solid #e6ebf3; border-radius: 18px; box-shadow: 0 24px 100px #142e5830; color: #172641; }
+.account-action-dialog::backdrop { background: #14233d66; backdrop-filter: blur(3px); }
+.action-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 21px; }
+.danger-icon { color: #be5665; background: #fff0f2; }
+.warning-icon { color: #b08642; background: #fff7e7; }
+.account-action-dialog h2 { font-size: 23px; letter-spacing: -.5px; margin: 0 0 14px; }
+.action-dialog-description { color: #8290a6; font-size: 12px; line-height: 1.9; margin-bottom: 22px; }
+.action-dialog-description p { margin: 0 0 12px; color: #5f718d; }
+.action-dialog-description ul { padding-left: 19px; margin: 0; }
+.action-dialog-description li { padding: 3px 0; }
+.action-confirmation { display: flex; align-items: flex-start; gap: 9px; color: #7a899e; font-size: 11px; line-height: 1.8; cursor: pointer; }
+.action-confirmation input { margin: 3px 0 0; width: 15px; height: 15px; accent-color: #1552f5; flex-shrink: 0; }
+.action-dialog-footer { display: flex; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #edf0f6; }
+.action-dialog-footer .button { margin: 0; font-size: 11px; min-height: 43px; padding: 11px 10px; }
+@media (max-width: 1150px) { .settings-content { padding: 30px 26px 20px; } }
+@media (max-width: 760px) { .settings-content { padding: 25px 18px 20px; } .settings-page-heading h1 { font-size: 26px; } .settings-page-heading .form-eyebrow { font-size: 8px; } .settings-page-heading > p { font-size: 11px; } .settings-card, .settings-account-summary { padding: 22px; } .settings-card .field-grid { grid-template-columns: 1fr; gap: 0; } .settings-card-heading { align-items: flex-start; gap: 11px; } .settings-card-heading h2 { font-size: 16px; } .settings-account-summary dl { grid-template-columns: 1fr; gap: 18px; } .settings-form-footer { align-items: stretch; flex-direction: column; gap: 12px; } .settings-form-footer .button { width: 100%; } .management-row { align-items: stretch; flex-direction: column; gap: 15px; } .management-row .button { width: 100%; } .settings-footer { font-size: 9px; } .account-action-dialog { padding: 23px; } .account-action-dialog h2 { font-size: 21px; } }
+@media (max-width: 380px) { .action-dialog-footer { flex-direction: column; gap: 9px; } }

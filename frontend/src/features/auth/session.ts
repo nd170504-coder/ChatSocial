@@ -93,6 +93,8 @@ export async function authenticatedRequest<T>(
 }
 
 export const authStore = {
+  // Account mutations already revoke sessions on the backend; do not call logout again.
+  endSession: clear,
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
   getSnapshot: () => snapshot,
   updateFullName(userId: string, fullName: string) {

@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from '../features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { AppLayout } from '../layouts/AppLayout'
 import { ProfilePage } from '../features/profile/pages/ProfilePage'
+import { AccountPage } from '../features/account/pages/AccountPage'
 
 export function AppRouter() {
   return <Routes>
@@ -25,6 +26,7 @@ export function AppRouter() {
         <Route path="/" element={<Navigate to="/profile" replace />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<ProfilePage editing />} />
+        <Route path="/settings/account" element={<AccountPage />} />
       </Route>
     </Route>
     <Route path="*" element={<main className="session-state"><h1>Không tìm thấy trang</h1><p>Đường dẫn này không tồn tại.</p><Link className="button button-primary" to="/">Về trang chính</Link></main>} />
