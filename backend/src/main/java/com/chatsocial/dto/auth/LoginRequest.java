@@ -1,12 +1,21 @@
 package com.chatsocial.dto.auth;
 
+import tools.jackson.databind.annotation.JsonDeserialize;
+import com.chatsocial.serialization.NormalizedIdentifierDeserializer;
 import jakarta.validation.constraints.*;
-import java.util.Locale;
+import lombok.Getter;
+import lombok.Setter;
 
-public record LoginRequest(
-        @NotBlank @Email @Size(max = 255) String email,
-        @NotBlank @Size(max = 72) String password) {
-    public LoginRequest {
-        email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
-    }
+@Getter
+@Setter
+public class LoginRequest {
+    @NotBlank
+    @Email
+    @Size(max = 255)
+    @JsonDeserialize(using = NormalizedIdentifierDeserializer.class)
+    private String email;
+
+    @NotBlank
+    @Size(max = 72)
+    private String password;
 }

@@ -1,10 +1,17 @@
 package com.chatsocial.dto.auth;
 
+import tools.jackson.databind.annotation.JsonDeserialize;
+import com.chatsocial.serialization.NormalizedIdentifierDeserializer;
 import jakarta.validation.constraints.*;
-import java.util.Locale;
+import lombok.Getter;
+import lombok.Setter;
 
-public record ResendVerificationRequest(@NotBlank @Email @Size(max = 255) String email) {
-    public ResendVerificationRequest {
-        email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
-    }
+@Getter
+@Setter
+public class ResendVerificationRequest {
+    @NotBlank
+    @Email
+    @Size(max = 255)
+    @JsonDeserialize(using = NormalizedIdentifierDeserializer.class)
+    private String email;
 }

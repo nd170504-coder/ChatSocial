@@ -14,6 +14,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDate;
 import java.util.Objects;
 
 @Service
@@ -38,10 +40,15 @@ public class ProfileService {
     @Transactional
     public ProfileResponse update(String userId, UpdateProfileRequest request) {
         UserProfile profile = profiles.findForUpdateByUserId(userId).orElseThrow(this::profileNotFound);
-        if (request.hasField("fullName")) profile.setFullName(request.getFullName());
-        if (request.hasField("bio")) profile.setBio(request.getBio());
-        if (request.hasField("dateOfBirth")) profile.setDateOfBirth(request.getDateOfBirth());
-        if (request.hasField("gender")) profile.setGender(request.getGender());
+        profile.setFullName(request.getFullName());
+        profile.setBio(request.getBio());
+
+        LocalDate dateOfBirth = request.getDateOfBirth();
+        if (dateOfBirth != null && dateOfBirth.isAfter(LocalDate.now().minusYears(15))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Bạn phải đủ 15 tuổi trở lên");
+        }
+        profile.setDateOfBirth(dateOfBirth);
+        profile.setGender(request.getGender());
         profiles.flush();
         return ProfileResponse.from(profile);
     }

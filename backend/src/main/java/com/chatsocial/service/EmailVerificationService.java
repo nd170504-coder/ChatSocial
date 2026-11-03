@@ -39,7 +39,7 @@ public class EmailVerificationService {
         this.properties = properties;
         this.emails = emails;
         this.transactions = new TransactionTemplate(transactionManager);
-        byte[] secret = Base64.getDecoder().decode(properties.secret());
+        byte[] secret = Base64.getDecoder().decode(properties.getSecret());
         if (secret.length < 32) throw new IllegalArgumentException("Email OTP secret requires at least 32 random bytes in Base64");
         this.key = new SecretKeySpec(secret, "HmacSHA256");
     }
@@ -56,19 +56,19 @@ public class EmailVerificationService {
     }
 
     public void deliver(IssuedCode code) {
-        emails.sendVerificationEmail(code.email(), code.otp(), properties.ttlSeconds());
+        emails.sendVerificationEmail(code.email(), code.otp(), properties.getTtlSeconds());
     }
 
     public void resend(ResendVerificationRequest request) {
         IssuedCode code = transactions.execute(status -> {
-            User user = users.findForUpdateByEmail(request.email()).orElse(null);
+            User user = users.findForUpdateByEmail(request.getEmail()).orElse(null);
             if (user == null || user.getStatus() != UserStatus.PENDING_VERIFICATION) return null;
             EmailVerification verification = verifications.findByUserId(user.getId()).orElse(null);
             if (verification == null) return issue(new EmailVerification(user), Instant.now());
             Instant now = Instant.now();
-            if (verification.getLastSentAt().plusSeconds(properties.resendCooldownSeconds()).isAfter(now)) return null;
+            if (verification.getLastSentAt().plusSeconds(properties.getResendCooldownSeconds()).isAfter(now)) return null;
             if (verification.getSendWindowStartedAt().plusSeconds(3600).isAfter(now)
-                    && verification.getSendCount() >= properties.maxSendsPerHour()) return null;
+                    && verification.getSendCount() >= properties.getMaxSendsPerHour()) return null;
             return issue(verification, now);
         });
         // Email is sent only after commit. SMTP failure leaves a recoverable pending account.
@@ -77,19 +77,19 @@ public class EmailVerificationService {
 
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public UserResponse verify(VerifyEmailRequest request) {
-        User user = users.findForUpdateByEmail(request.email()).orElseThrow(this::invalidCode);
+        User user = users.findForUpdateByEmail(request.getEmail()).orElseThrow(this::invalidCode);
         if (user.getStatus() != UserStatus.PENDING_VERIFICATION) throw invalidCode();
         EmailVerification verification = verifications.findByUserId(user.getId()).orElseThrow(this::invalidCode);
         Instant now = Instant.now();
         if (verification.getConsumedAt() != null || !verification.getExpiresAt().isAfter(now)) throw invalidCode();
-        if (verification.getFailedAttempts() >= properties.maxAttempts()) {
+        if (verification.getFailedAttempts() >= properties.getMaxAttempts()) {
             throw new InvalidVerificationCodeException(true);
         }
         if (!MessageDigest.isEqual(HexFormat.of().parseHex(verification.getCodeHash()),
-                HexFormat.of().parseHex(hash(user.getId(), request.otp())))) {
+                HexFormat.of().parseHex(hash(user.getId(), request.getOtp())))) {
             verification.setFailedAttempts(verification.getFailedAttempts() + 1);
             verifications.flush();
-            throw new InvalidVerificationCodeException(verification.getFailedAttempts() >= properties.maxAttempts());
+            throw new InvalidVerificationCodeException(verification.getFailedAttempts() >= properties.getMaxAttempts());
         }
         verification.setConsumedAt(now);
         user.setStatus(UserStatus.ACTIVE);
@@ -110,7 +110,7 @@ public class EmailVerificationService {
             verification.setSendCount(0);
         }
         verification.setCodeHash(hash);
-        verification.setExpiresAt(now.plusSeconds(properties.ttlSeconds()));
+        verification.setExpiresAt(now.plusSeconds(properties.getTtlSeconds()));
         verification.setFailedAttempts(0);
         verification.setConsumedAt(null);
         verification.setLastSentAt(now);

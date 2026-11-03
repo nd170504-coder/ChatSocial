@@ -18,10 +18,10 @@ public class JwtService {
 
     public Jwt createAccessToken(String userId, String sessionId, Instant sessionExpiresAt) {
         Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
-        Instant expiresAt = now.plusSeconds(properties.accessTokenSeconds());
+        Instant expiresAt = now.plusSeconds(properties.getAccessTokenSeconds());
         if (sessionExpiresAt.isBefore(expiresAt)) expiresAt = sessionExpiresAt;
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer(properties.issuer())
+                .issuer(properties.getIssuer())
                 .subject(userId)
                 .id(java.util.UUID.randomUUID().toString())
                 .claim("sid", sessionId)

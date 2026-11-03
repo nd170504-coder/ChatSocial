@@ -369,11 +369,11 @@ class AuthIntegrationTests {
                 .andExpect(header().string("WWW-Authenticate", "Bearer"));
         JwtEncoder otherKey = new NimbusJwtEncoder(new ImmutableSecret<>(
                 Base64.getDecoder().decode("YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=")));
-        for (String token : new String[]{"invalid.jwt", token(encoder, id, sessionId, jwtProperties.issuer(), -120),
-                token(otherKey, id, sessionId, jwtProperties.issuer(), 900), token(encoder, id, sessionId, "wrong-issuer", 900),
-                token(encoder, "missing-user", sessionId, jwtProperties.issuer(), 900),
-                token(encoder, id, "missing-session", jwtProperties.issuer(), 900),
-                token(encoder, id, null, jwtProperties.issuer(), 900)}) {
+        for (String token : new String[]{"invalid.jwt", token(encoder, id, sessionId, jwtProperties.getIssuer(), -120),
+                token(otherKey, id, sessionId, jwtProperties.getIssuer(), 900), token(encoder, id, sessionId, "wrong-issuer", 900),
+                token(encoder, "missing-user", sessionId, jwtProperties.getIssuer(), 900),
+                token(encoder, id, "missing-session", jwtProperties.getIssuer(), 900),
+                token(encoder, id, null, jwtProperties.getIssuer(), 900)}) {
             mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + token))
                     .andExpect(status().isUnauthorized());
         }
@@ -461,7 +461,7 @@ class AuthIntegrationTests {
     void refreshWorksWithoutAccessTokenEvenWhenPreviousAccessTokenExpired() throws Exception {
         String id = register("alice@example.com", "alice", "password123").get("id").asText();
         JsonNode auth = login("alice@example.com", "password123", 200);
-        String expired = token(encoder, id, auth.get("sessionId").asText(), jwtProperties.issuer(), -120);
+        String expired = token(encoder, id, auth.get("sessionId").asText(), jwtProperties.getIssuer(), -120);
         mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + expired))
                 .andExpect(status().isUnauthorized());
         refresh(auth.get("refreshToken").asText(), 200);
@@ -540,7 +540,7 @@ class AuthIntegrationTests {
     }
 
     @Test
-    void profilePatchPreservesOmittedFieldsClearsNullableFieldsAndCannotEditAnotherUser() throws Exception {
+    void profileUpdateReplacesFieldsAndCannotEditAnotherUser() throws Exception {
         String aliceId = register("alice@example.com", "alice", "password123").get("id").asText();
         String bobId = register("bob@example.com", "bob", "password123").get("id").asText();
         String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
@@ -549,7 +549,7 @@ class AuthIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.userId").value(aliceId));
         mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("""
-                                {"fullName":" Alice Updated ","bio":" Hello ","dateOfBirth":"2000-05-20","gender":"FEMALE"}
+                                {"fullName":"Alice Updated","bio":"Hello","dateOfBirth":"2000-05-20","gender":"FEMALE"}
                                 """))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Alice Updated"))
                 .andExpect(jsonPath("$.data.bio").value("Hello"))
@@ -557,7 +557,7 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.data.gender").value("FEMALE"));
         mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("""
-                                {"bio":null,"dateOfBirth":null,"gender":null,"userId":"%s","avatarUrl":"https://untrusted.example/a.jpg"}
+                                {"fullName":"Alice Updated","bio":null,"userId":"%s","avatarUrl":"https://untrusted.example/a.jpg"}
                                 """.formatted(bobId)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("Alice Updated"))
                 .andExpect(jsonPath("$.data.bio").isEmpty()).andExpect(jsonPath("$.data.dateOfBirth").isEmpty())
@@ -570,9 +570,9 @@ class AuthIntegrationTests {
     void invalidProfileChangesDoNotChangeStoredProfile() throws Exception {
         String id = register("alice@example.com", "alice", "password123").get("id").asText();
         String token = login("alice@example.com", "password123", 200).get("accessToken").asText();
-        for (String body : new String[]{"{\"fullName\":null}", "{\"fullName\":\"  \"}",
-                "{\"dateOfBirth\":\"2999-01-01\"}", "{\"gender\":\"INVALID\"}",
-                json.writeValueAsString(java.util.Map.of("bio", "x".repeat(1001)))}) {
+        for (String body : new String[]{"{", "[]", "null", "{}", "{\"fullName\":null}", "{\"fullName\":\"  \"}",
+                "{\"fullName\":\"Alice\",\"dateOfBirth\":\"2999-01-01\"}", "{\"fullName\":\"Alice\",\"gender\":\"INVALID\"}",
+                json.writeValueAsString(java.util.Map.of("fullName", "Alice", "bio", "x".repeat(1001)))}) {
             mvc.perform(patch("/api/users/me/profile").header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON).content(body))
                     .andExpect(status().isBadRequest());

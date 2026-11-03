@@ -28,7 +28,7 @@ public class ProfileController {
     }
 
     @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(summary = "Cập nhật hồ sơ", description = "Không gửi field: giữ nguyên. Gửi null: xóa, trừ fullName.")
+    @Operation(summary = "Cập nhật hồ sơ", description = "fullName bắt buộc. Các field khác không gửi hoặc gửi null sẽ được xóa.")
     public ResponseEntity<ApiResponse<ProfileResponse>> update(@Valid @RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Profile updated successfully",
                 profiles.update(SecurityUtils.getCurrentUserId(), request)));

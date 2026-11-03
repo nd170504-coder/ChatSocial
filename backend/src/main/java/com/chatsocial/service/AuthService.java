@@ -42,12 +42,18 @@ public class AuthService {
 
     public UserResponse register(RegisterRequest request) {
         Registration result = java.util.Objects.requireNonNull(transactions.execute(status -> {
-            if (users.existsByEmail(request.email()) || users.existsByUsername(request.username())) {
+            if (users.existsByEmail(request.getEmail()) || users.existsByUsername(request.getUsername())) {
                 throw new ApiException(HttpStatus.CONFLICT, "Email or username already exists");
             }
-            User user = users.saveAndFlush(new User(null, request.email(), passwords.encode(request.password()),
-                    request.username(), UserStatus.PENDING_VERIFICATION, null, null));
-            UserProfile profile = profiles.saveAndFlush(new UserProfile(null, user, request.fullName(),
+            String passwordHash;
+            try {
+                passwordHash = passwords.encode(request.getPassword());
+            } catch (IllegalArgumentException exception) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Password exceeds BCrypt's supported byte length");
+            }
+            User user = users.saveAndFlush(new User(null, request.getEmail(), passwordHash,
+                    request.getUsername(), UserStatus.PENDING_VERIFICATION, null, null));
+            UserProfile profile = profiles.saveAndFlush(new UserProfile(null, user, request.getFullName(),
                     null, null, null, null, null));
             return new Registration(UserResponse.from(user, profile), verification.issueInitial(user));
         }));
@@ -59,11 +65,11 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request, String userAgent) {
-        User user = users.findByEmail(request.email()).orElse(null);
+        User user = users.findByEmail(request.getEmail()).orElse(null);
         String hash = user == null ? dummyPasswordHash : user.getPasswordHash();
         // Avoid BCrypt's byte limit exception for multibyte input.
-        boolean matches = request.password().getBytes(StandardCharsets.UTF_8).length <= 72
-                && passwords.matches(request.password(), hash);
+        boolean matches = request.getPassword().getBytes(StandardCharsets.UTF_8).length <= 72
+                && passwords.matches(request.getPassword(), hash);
         if (!matches || user == null) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
@@ -76,7 +82,7 @@ public class AuthService {
 
     @Transactional(noRollbackFor = com.chatsocial.exception.RefreshTokenReuseException.class)
     public AuthResponse refresh(RefreshTokenRequest request) {
-        return authResponse(sessions.refresh(request.refreshToken()));
+        return authResponse(sessions.refresh(request.getRefreshToken()));
     }
 
     private AuthResponse authResponse(UserSessionService.SessionTokens sessionTokens) {
