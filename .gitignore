@@ -1,0 +1,27 @@
+# Local environment files in any project directory
+.env
+.env.*
+!.env.example
+
+# Local Spring Boot overrides (may contain credentials)
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# Dependencies and generated output
+node_modules/
+target/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+
+# Local editor and OS files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

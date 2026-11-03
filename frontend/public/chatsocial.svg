@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#16B8F5"/>
+      <stop offset="50%" stop-color="#1552F5"/>
+      <stop offset="100%" stop-color="#6435F5"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#C6E5FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="12" y="12" width="488" height="488"
+        rx="112" fill="url(#bg)"/>
+
+  <!-- Main chat bubble -->
+  <path d="M256 92 C153 92 82 160 82 251
+    C82 307 108 349 149 375
+    L128 430 Q124 446 142 440
+    L202 408 Q228 418 256 418
+    C359 418 430 350 430 251
+    C430 160 359 92 256 92Z"
+    fill="url(#bubble)"/>
+
+  <!-- First user -->
+  <circle cx="211" cy="220" r="43" fill="#1552E9"/>
+  <path d="M137 326 Q137 266 211 266
+    Q285 266 285 326 Q285 342 269 342
+    H153 Q137 342 137 326Z"
+    fill="#1552E9"/>
+
+  <!-- Second user -->
+  <circle cx="314" cy="232" r="34" fill="#397DF5"/>
+  <path d="M272 321 Q272 278 314 278
+    Q356 278 356 321 Q356 337 341 337
+    H287 Q272 337 272 321Z"
+    fill="#397DF5"/>
+
+  <!-- Notification accents -->
+  <g stroke="#8CEBFF" stroke-width="16"
+     stroke-linecap="round">
+    <path d="M365 100 L379 75"/>
+    <path d="M404 130 L428 111"/>
+    <path d="M420 173 L448 173"/>
+  </g>
+</svg>
