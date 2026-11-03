@@ -65,7 +65,7 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request, String userAgent) {
-        User user = users.findByEmail(request.getEmail()).orElse(null);
+        User user = users.findForUpdateByEmail(request.getEmail()).orElse(null);
         String hash = user == null ? dummyPasswordHash : user.getPasswordHash();
         // Avoid BCrypt's byte limit exception for multibyte input.
         boolean matches = request.getPassword().getBytes(StandardCharsets.UTF_8).length <= 72
