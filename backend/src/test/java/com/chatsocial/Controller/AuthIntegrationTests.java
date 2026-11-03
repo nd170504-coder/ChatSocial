@@ -52,6 +52,7 @@ class AuthIntegrationTests {
     @Autowired UserSessionRepository sessions;
     @Autowired UserRefreshTokenRepository refreshTokens;
     @Autowired EmailVerificationRepository verifications;
+    @Autowired PasswordResetRepository resets;
     @MockitoBean JavaMailSender mailSender;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtEncoder encoder;
@@ -66,6 +67,7 @@ class AuthIntegrationTests {
         refreshTokens.deleteAll();
         sessions.deleteAll();
         verifications.deleteAll();
+        resets.deleteAll();
         profiles.deleteAll();
         users.deleteAll();
     }
@@ -689,6 +691,9 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/verify-email'].post.security").isEmpty())
                 .andExpect(jsonPath("$.paths['/api/auth/resend-verification'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/forgot-password'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/reset-password'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/change-password'].post.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/auth/logout'].post.security[0].bearerAuth").isArray())
                 .andExpect(jsonPath("$.paths['/api/users/me'].get.parameters").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['200'].content['application/json'].schema['$ref']").exists());
@@ -705,6 +710,201 @@ class AuthIntegrationTests {
         mvc.perform(options("/api/auth/login").header("Origin", "https://untrusted.example")
                         .header("Access-Control-Request-Method", "POST"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void changePasswordRevokesEverySessionAndInvalidatesOutstandingResetCode() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        JsonNode first = login("alice@example.com", "password123", 200);
+        JsonNode second = login("alice@example.com", "password123", 200);
+        forgotPassword("alice@example.com");
+        String code = lastOtp();
+        changePassword(first, "password123", " newPassword123 ", " newPassword123 ", 200);
+        assertNotNull(resets.findByUserId(id).orElseThrow().getConsumedAt());
+        for (JsonNode auth : java.util.List.of(first, second)) {
+            mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + auth.get("accessToken").asText()))
+                    .andExpect(status().isUnauthorized());
+            refresh(auth.get("refreshToken").asText(), 401);
+        }
+        resetPassword("alice@example.com", code, "anotherPassword123", "anotherPassword123", 400);
+        login("alice@example.com", "password123", 401);
+        login("alice@example.com", " newPassword123 ", 200);
+        assertEquals("ChatSocial - Mật khẩu đã thay đổi", lastEmail().getSubject());
+    }
+
+    @Test
+    void changePasswordRejectsInvalidInputWithoutRevokingSession() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        mvc.perform(post("/api/auth/change-password").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+        changePassword(auth, "incorrect", "newPassword123", "newPassword123", 400);
+        changePassword(auth, "password123", "newPassword123", "differentPassword", 400);
+        changePassword(auth, "password123", "password123", "password123", 400);
+        changePassword(auth, "password123", "short", "short", 400);
+        changePassword(auth, "password123", "ấ".repeat(25), "ấ".repeat(25), 400);
+        changePassword(auth, "ấ".repeat(25), "newPassword123", "newPassword123", 400);
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + auth.get("accessToken").asText()))
+                .andExpect(status().isOk());
+        login("alice@example.com", "password123", 200);
+        verify(mailSender, times(1)).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void resetPasswordConsumesCodeAndRevokesEverySession() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        JsonNode first = login("alice@example.com", "password123", 200);
+        JsonNode second = login("alice@example.com", "password123", 200);
+        forgotPassword(" ALICE@example.com ");
+        String code = lastOtp();
+        var reset = resets.findByUserId(id).orElseThrow();
+        assertEquals(64, reset.getCodeHash().length());
+        assertNotEquals(code, reset.getCodeHash());
+        assertTrue(reset.getExpiresAt().isAfter(Instant.now().plusSeconds(290)));
+        resetPassword("alice@example.com", code, "newPassword123", "newPassword123", 200);
+        assertNotNull(resets.findByUserId(id).orElseThrow().getConsumedAt());
+        for (JsonNode auth : java.util.List.of(first, second)) {
+            mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + auth.get("accessToken").asText()))
+                    .andExpect(status().isUnauthorized());
+            refresh(auth.get("refreshToken").asText(), 401);
+        }
+        resetPassword("alice@example.com", code, "anotherPassword123", "anotherPassword123", 400);
+        login("alice@example.com", "password123", 401);
+        login("alice@example.com", "newPassword123", 200);
+    }
+
+    @Test
+    void resetAttemptsPersistAndResendReplacesCodeWithinLimits() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        forgotPassword("alice@example.com");
+        String code = lastOtp();
+        String wrong = code.equals("000000") ? "111111" : "000000";
+        for (int count = 1; count <= 5; count++) {
+            resetPassword("alice@example.com", wrong, "newPassword123", "newPassword123", count == 5 ? 429 : 400);
+            assertEquals(count, resets.findByUserId(id).orElseThrow().getFailedAttempts());
+        }
+        resetPassword("alice@example.com", code, "newPassword123", "newPassword123", 429);
+        forgotPassword("alice@example.com");
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        var reset = resets.findByUserId(id).orElseThrow();
+        reset.setLastSentAt(Instant.now().minusSeconds(61));
+        resets.saveAndFlush(reset);
+        forgotPassword("alice@example.com");
+        String replacement = lastOtp();
+        assertNotEquals(code, replacement);
+        assertEquals(0, resets.findByUserId(id).orElseThrow().getFailedAttempts());
+        resetPassword("alice@example.com", code, "newPassword123", "newPassword123", 400);
+        reset = resets.findByUserId(id).orElseThrow();
+        reset.setSendCount(5);
+        reset.setLastSentAt(Instant.now().minusSeconds(61));
+        resets.saveAndFlush(reset);
+        forgotPassword("alice@example.com");
+        verify(mailSender, times(3)).send(any(MimeMessage.class));
+        reset.setSendWindowStartedAt(Instant.now().minusSeconds(3601));
+        resets.saveAndFlush(reset);
+        forgotPassword("alice@example.com");
+        verify(mailSender, times(4)).send(any(MimeMessage.class));
+        assertEquals(1, resets.findByUserId(id).orElseThrow().getSendCount());
+        resetPassword("alice@example.com", lastOtp(), "newPassword123", "newPassword123", 200);
+    }
+
+    @Test
+    void resetRejectsExpiredCodeAndInvalidPasswordsWithoutConsumingValidCode() throws Exception {
+        String id = register("alice@example.com", "alice", "password123").get("id").asText();
+        forgotPassword("alice@example.com");
+        String code = lastOtp();
+        resetPassword("alice@example.com", code, "newPassword123", "differentPassword", 400);
+        resetPassword("alice@example.com", code, "password123", "password123", 400);
+        resetPassword("alice@example.com", code, "ấ".repeat(25), "ấ".repeat(25), 400);
+        resetPassword("alice@example.com", "123", "newPassword123", "newPassword123", 400);
+        resetPassword("alice@example.com", code, "short", "short", 400);
+        assertNull(resets.findByUserId(id).orElseThrow().getConsumedAt());
+        var reset = resets.findByUserId(id).orElseThrow();
+        reset.setExpiresAt(Instant.now().minusSeconds(1));
+        resets.saveAndFlush(reset);
+        resetPassword("alice@example.com", code, "newPassword123", "newPassword123", 400);
+        login("alice@example.com", "password123", 200);
+    }
+
+    @Test
+    void forgotPasswordDoesNotRevealMissingPendingOrDisabledAccountsOrSmtpFailures() throws Exception {
+        forgotPassword("missing@example.com");
+        registerPending("alice@example.com", "alice", "password123");
+        String verificationCode = lastOtp();
+        forgotPassword("alice@example.com");
+        assertEquals(0, resets.count());
+        resetPassword("alice@example.com", verificationCode, "newPassword123", "newPassword123", 400);
+        verifyEmail("alice@example.com", verificationCode, 200);
+        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
+                .when(mailSender).send(any(MimeMessage.class));
+        forgotPassword("alice@example.com");
+        assertEquals(1, resets.count());
+        var user = users.findByEmail("alice@example.com").orElseThrow();
+        user.setStatus(UserStatus.DISABLED);
+        users.saveAndFlush(user);
+        forgotPassword("alice@example.com");
+        resetPassword("alice@example.com", lastOtp(), "newPassword123", "newPassword123", 400);
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void notificationFailureDoesNotUndoPasswordChange() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        JsonNode auth = login("alice@example.com", "password123", 200);
+        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
+                .when(mailSender).send(any(MimeMessage.class));
+        changePassword(auth, "password123", "newPassword123", "newPassword123", 200);
+        login("alice@example.com", "newPassword123", 200);
+        refresh(auth.get("refreshToken").asText(), 401);
+    }
+
+    @Test
+    void simultaneousPasswordResetsConsumeCodeOnlyOnce() throws Exception {
+        register("alice@example.com", "alice", "password123");
+        forgotPassword("alice@example.com");
+        String code = lastOtp();
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Integer> task = () -> {
+                start.await();
+                return mvc.perform(post("/api/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                                .content(json.writeValueAsString(java.util.Map.of("email", "alice@example.com", "otp", code,
+                                        "newPassword", "newPassword123", "confirmPassword", "newPassword123"))))
+                        .andReturn().getResponse().getStatus();
+            };
+            var first = pool.submit(task);
+            var second = pool.submit(task);
+            start.countDown();
+            var statuses = java.util.List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(15, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(statuses.contains(200));
+            assertTrue(statuses.contains(400));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private void forgotPassword(String email) throws Exception {
+        mvc.perform(post("/api/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("email", email))))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.message").value(
+                        "If the account is eligible and sending is allowed, a password reset code will be emailed"));
+    }
+
+    private void resetPassword(String email, String code, String password, String confirmation, int expectedStatus) throws Exception {
+        mvc.perform(post("/api/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(java.util.Map.of("email", email, "otp", code,
+                                "newPassword", password, "confirmPassword", confirmation))))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    private void changePassword(JsonNode auth, String current, String password, String confirmation, int expectedStatus) throws Exception {
+        mvc.perform(post("/api/auth/change-password").header("Authorization", "Bearer " + auth.get("accessToken").asText())
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(java.util.Map.of(
+                                "currentPassword", current, "newPassword", password, "confirmPassword", confirmation))))
+                .andExpect(status().is(expectedStatus));
     }
 
     private JsonNode register(String email, String username, String password) throws Exception {

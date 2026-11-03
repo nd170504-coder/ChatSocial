@@ -71,7 +71,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh",
-                                "/api/auth/verify-email", "/api/auth/resend-verification").permitAll()
+                                "/api/auth/verify-email", "/api/auth/resend-verification",
+                                "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(problems).accessDeniedHandler(problems))
                 .oauth2ResourceServer(oauth -> oauth

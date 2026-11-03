@@ -13,6 +13,10 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
     @Query("select s from UserSession s where s.id = :id")
     Optional<UserSession> findForUpdateById(@Param("id") String id);
 
+    @Modifying
+    @Query("update UserSession s set s.revokedAt = :now where s.user.id = :userId and s.revokedAt is null")
+    void revokeAllByUserId(@Param("userId") String userId, @Param("now") Instant now);
+
     @Query("""
             select (count(s) > 0) from UserSession s
             where s.id = :id and s.user.id = :userId and s.revokedAt is null

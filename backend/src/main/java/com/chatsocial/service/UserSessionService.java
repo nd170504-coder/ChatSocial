@@ -73,6 +73,11 @@ public class UserSessionService {
         if (session.getRevokedAt() == null) session.setRevokedAt(Instant.now());
     }
 
+    @Transactional
+    public void revokeAll(String userId) {
+        sessions.revokeAllByUserId(userId, Instant.now());
+    }
+
     private String issueRefreshToken(UserSession session, Instant now) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);

@@ -4,6 +4,7 @@ import com.chatsocial.dto.ApiResponse;
 import com.chatsocial.dto.auth.*;
 import com.chatsocial.dto.user.UserResponse;
 import com.chatsocial.service.AuthService;
+import com.chatsocial.service.PasswordService;
 import com.chatsocial.service.UserSessionService;
 import com.chatsocial.service.EmailVerificationService;
 import com.chatsocial.utils.SecurityUtils;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 @SecurityRequirements
 public class AuthController {
     private final AuthService authService;
+    private final PasswordService passwordService;
     private final UserSessionService sessions;
     private final EmailVerificationService verification;
 
@@ -62,6 +64,29 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success("Token refreshed successfully", authService.refresh(request)));
+    }
+
+    @PostMapping("/change-password")
+    @SecurityRequirements(@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
+    @Operation(summary = "Đổi mật khẩu", description = "Kiểm tra mật khẩu hiện tại, đổi mật khẩu và thu hồi toàn bộ phiên đăng nhập.")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        passwordService.changePassword(SecurityUtils.getCurrentUserId(), request);
+        return ResponseEntity.ok(ApiResponse.success("Password changed successfully; please log in again", null));
+    }
+
+    @PostMapping("/forgot-password")
+    @Operation(summary = "Quên mật khẩu", description = "Gửi OTP qua email. Dùng lại API này để gửi lại mã, áp dụng giới hạn như OTP xác minh email.")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordService.forgotPassword(request);
+        return ResponseEntity.accepted().body(ApiResponse.success(
+                "If the account is eligible and sending is allowed, a password reset code will be emailed", null));
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(summary = "Đặt lại mật khẩu", description = "Dùng email và OTP để đặt mật khẩu mới, thu hồi toàn bộ phiên đăng nhập.")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password reset successfully; please log in again", null));
     }
 
     @PostMapping("/logout")

@@ -48,4 +48,34 @@ public class EmailService {
                     "Unable to send verification email; please request a new code later");
         }
     }
+
+    public void sendPasswordResetEmail(String email, String otp, long ttlSeconds) {
+        long minutes = (ttlSeconds + 59) / 60;
+        sendPasswordEmail(email, "ChatSocial - Đặt lại mật khẩu",
+                "Mã đặt lại mật khẩu ChatSocial của bạn: " + otp + ". Mã có hiệu lực "
+                        + minutes + " phút và chỉ sử dụng một lần. Không chia sẻ mã này với người khác. "
+                        + "Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.");
+    }
+
+    public void sendPasswordChangedEmail(String email) {
+        sendPasswordEmail(email, "ChatSocial - Mật khẩu đã thay đổi",
+                "Mật khẩu ChatSocial của bạn đã được thay đổi. Tất cả phiên đăng nhập đã bị thu hồi. "
+                        + "Nếu bạn không thực hiện thao tác này, hãy đặt lại mật khẩu ngay.");
+    }
+
+    private void sendPasswordEmail(String email, String subject, String text) {
+        try {
+            MimeMessage message = sender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+            helper.setFrom(from, "ChatSocial");
+            helper.setTo(email);
+            helper.setSubject(subject);
+            helper.setText(text);
+            sender.send(message);
+        } catch (MessagingException | IOException | MailException exception) {
+            // Do not expose account existence on forgot-password or fail an already committed password change.
+            log.warn("Password email delivery failed ({})", exception.getClass().getSimpleName());
+        }
+    }
+
 }
