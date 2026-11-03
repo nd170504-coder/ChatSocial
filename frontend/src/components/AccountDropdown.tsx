@@ -51,7 +51,10 @@ export function AccountDropdown({ avatarUrl }: { avatarUrl?: string | null }) {
     {open && <div ref={panel} id={panelId} className="account-panel">
       <div className="account-panel-identity"><Avatar name={user.fullName} src={avatarUrl} className="account-avatar" /><div><strong>{user.fullName}</strong><span>@{user.username}</span></div></div>
       <p className="account-status"><span className="status-dot" aria-hidden="true" />Đã đăng nhập</p>
-      <nav aria-label="Tùy chọn tài khoản"><Link className="account-action" to="/profile" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="user" />Hồ sơ của tôi</Link></nav>
+      <nav aria-label="Tùy chọn tài khoản">
+        <Link className="account-action" to="/profile" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="user" />Hồ sơ của tôi</Link>
+        <Link className="account-action" to="/settings/account" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="settings" />Cài đặt tài khoản</Link>
+      </nav>
       {form.error && <p className="account-error" role="alert">{form.error}</p>}
       <button className="account-action account-logout" type="button" disabled={form.busy} onClick={() => void form.run(async () => {
         await authStore.logout()
