@@ -12,6 +12,8 @@
 .friend-results-heading > span { color: #8291a8; font-size: 11px; white-space: nowrap; }
 .friend-result-grid { display: grid; grid-template-columns: 1fr 1fr; list-style: none; padding: 0; margin: 0; gap: 16px; }
 .friend-result-card { display: flex; gap: 14px; align-items: center; border: 1px solid #e6ebf3; border-radius: 14px; padding: 22px; background: #fff; min-width: 0; }
+.friend-profile-link { height: 100%; color: #172641; }
+.friend-profile-link:hover { text-decoration: none; border-color: #a9c1f0; box-shadow: 0 3px 12px #1552f50b; }
 .friend-result-card .friend-result-avatar { width: 54px; height: 54px; border-width: 2px; font-size: 18px; flex-shrink: 0; }
 .friend-result-card > div { min-width: 0; }
 .friend-result-card h3 { margin: 0 0 7px; font-size: 14px; overflow-wrap: anywhere; }

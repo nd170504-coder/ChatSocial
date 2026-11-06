@@ -49,12 +49,13 @@ export function PostCard({ post, authorName, avatarUrl, onSaved, onDeleted }: {
   const { session } = useAuth()
   const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
   const own = post.userId === session?.user.id
+  const profilePath = own ? '/profile' : `/users/${encodeURIComponent(post.userId)}`
   const [expanded, setExpanded] = useState(false)
   const long = (post.content?.length || 0) > 600
   const images = [...post.media].filter(media => media.mediaType === 'IMAGE').sort((a, b) => a.displayOrder - b.displayOrder)
 
   return <article className="post-card">
-    <header className="post-card-header"><Avatar name={authorName} src={avatarUrl} className="post-avatar" /><div className="post-card-author"><strong>{authorName}</strong><div><Link to={`/posts/${post.id}`} aria-label="Xem chi tiết bài viết"><time dateTime={post.createdAt}>{postTime(post.createdAt)}</time></Link><span aria-hidden="true">·</span><span title={privacyLabels[post.privacy]}><Icon name={post.privacy === 'PRIVATE' ? 'lock' : 'shield'} width="12" height="12" />{privacyLabels[post.privacy]}</span></div></div>
+    <header className="post-card-header"><Link className="post-author-avatar" to={profilePath} aria-label={`Xem hồ sơ của ${authorName}`}><Avatar name={authorName} src={avatarUrl} className="post-avatar" /></Link><div className="post-card-author"><strong><Link className="post-author-name" to={profilePath}>{authorName}</Link></strong><div><Link to={`/posts/${post.id}`} aria-label="Xem chi tiết bài viết"><time dateTime={post.createdAt}>{postTime(post.createdAt)}</time></Link><span aria-hidden="true">·</span><span title={privacyLabels[post.privacy]}><Icon name={post.privacy === 'PRIVATE' ? 'lock' : 'shield'} width="12" height="12" />{privacyLabels[post.privacy]}</span></div></div>
       {own && <div className="post-card-tools"><button type="button" className="icon-button" aria-label="Chỉnh sửa bài viết" onClick={() => setDialog('edit')}><Icon name="edit" width="16" height="16" /></button><button type="button" className="icon-button" aria-label="Xóa bài viết" onClick={() => setDialog('delete')}><Icon name="trash" width="16" height="16" /></button></div>}
     </header>
     {post.content && <div className="post-card-content"><p>{long && !expanded ? `${post.content.slice(0, 600)}…` : post.content}</p>{long && <button type="button" className="post-text-toggle" onClick={() => setExpanded(value => !value)}>{expanded ? 'Thu gọn' : 'Xem thêm'}</button>}</div>}

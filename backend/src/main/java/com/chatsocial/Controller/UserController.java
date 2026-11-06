@@ -6,6 +6,8 @@ import com.chatsocial.dto.user.AccountActionRequest;
 import com.chatsocial.dto.user.UserResponse;
 import com.chatsocial.dto.user.UserSearchResponse;
 import com.chatsocial.service.UserSearchService;
+import com.chatsocial.service.UserProfileService;
+import com.chatsocial.dto.profile.UserProfileResponse;
 import com.chatsocial.service.AccountService;
 import com.chatsocial.service.AuthService;
 import com.chatsocial.service.PostService;
@@ -28,6 +30,14 @@ public class UserController {
     private final AccountService accountService;
     private final PostService postService;
     private final UserSearchService userSearchService;
+    private final UserProfileService userProfileService;
+
+    @GetMapping("/{userId}/profile")
+    @Operation(summary = "Xem hồ sơ người dùng", description = "Thông tin cơ bản và quan hệ SELF/FRIENDS/NONE. Không trả email, ngày sinh hoặc giới tính.")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getUserProfile(@PathVariable("userId") String userId) {
+        return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully",
+                userProfileService.get(SecurityUtils.getCurrentUserId(), userId)));
+    }
 
     @GetMapping("/search")
     @Operation(summary = "Tìm người dùng", description = "Tìm một phần username hoặc email đầy đủ, không phân biệt hoa thường. Chỉ trả tài khoản đang hoạt động, loại chính mình.")

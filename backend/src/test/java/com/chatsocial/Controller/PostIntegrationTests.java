@@ -72,6 +72,77 @@ class PostIntegrationTests {
     }
 
     @Test
+    void visitorProfileAndPostsFollowActualFriendshipAndProtectPrivateMedia() throws Exception {
+        profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", "/cover.png",
+                "Hello", java.time.LocalDate.of(2000, 1, 1), com.chatsocial.enums.Gender.OTHER));
+        String publicId = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        JsonNode friendPost = create("{\"content\":\"Friends\",\"privacy\":\"FRIENDS\"}", image());
+        create("{\"content\":\"Private\",\"privacy\":\"PRIVATE\"}", image());
+        String friendId = friendPost.get("id").asText();
+        String mediaUrl = friendPost.get("media").get(0).get("url").asText();
+        User viewer = user("visitor");
+        String profileUrl = "/api/users/" + author.getId() + "/profile";
+        String postsUrl = "/api/users/" + author.getId() + "/posts";
+
+        mvc.perform(get(profileUrl)).andExpect(status().isUnauthorized());
+        mvc.perform(get(profileUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("NONE"))
+                .andExpect(jsonPath("$.data.fullName").value("Minh Anh"))
+                .andExpect(jsonPath("$.data.coverUrl").value("/cover.png"))
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andExpect(jsonPath("$.data.dateOfBirth").doesNotExist())
+                .andExpect(jsonPath("$.data.gender").doesNotExist());
+        mvc.perform(get(postsUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(publicId));
+        mvc.perform(get("/api/post/{id}", friendId).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        mvc.perform(get(profileUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("FRIENDS"));
+        mvc.perform(get(postsUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[?(@.privacy == 'PRIVATE')]").isEmpty());
+        when(storage.downloadPostImage(anyString()))
+                .thenReturn(new SupabaseStorageService.DownloadedImage(PNG, "image/png"));
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk());
+
+        friendships.deleteAll();
+        mvc.perform(get(profileUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("NONE"));
+        mvc.perform(get(postsUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1));
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(profileUrl).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("SELF"));
+        mvc.perform(get(postsUrl).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(3));
+    }
+
+    @Test
+    void visitorProfileRejectsUnavailableUsersAndSupportsMissingOptionalProfile() throws Exception {
+        User viewer = user("visitor");
+        mvc.perform(get("/api/users/{id}/profile", author.getId())
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fullName").value("author"));
+        mvc.perform(get("/api/users/{id}/profile", UUID.randomUUID().toString())
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        for (UserStatus state : new UserStatus[]{UserStatus.DISABLED, UserStatus.DELETED, UserStatus.PENDING_VERIFICATION}) {
+            author.setStatus(state);
+            users.saveAndFlush(author);
+            mvc.perform(get("/api/users/{id}/profile", author.getId())
+                            .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    @Test
     void publicFeedOnlyReturnsPublicPostsFromActiveAuthorsAndIncludesAuthorDetails() throws Exception {
         profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", null, null, null, null));
         String publicId = create("{\"content\":\"Public A\",\"privacy\":\"PUBLIC\"}", image()).get("id").asText();
