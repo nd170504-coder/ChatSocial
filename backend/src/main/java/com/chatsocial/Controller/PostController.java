@@ -3,6 +3,7 @@ package com.chatsocial.Controller;
 import com.chatsocial.dto.ApiResponse;
 import com.chatsocial.dto.post.CreatePostRequest;
 import com.chatsocial.dto.post.PostResponse;
+import com.chatsocial.dto.post.PostPageResponse;
 import com.chatsocial.dto.post.UpdatePostRequest;
 import com.chatsocial.service.PostService;
 import com.chatsocial.service.SupabaseStorageService;
@@ -30,6 +31,15 @@ public class PostController {
 
     private final PostService postService;
     private final SupabaseStorageService storage;
+
+    @GetMapping("/public")
+    @Operation(summary = "Lấy bài viết công khai", description = "Bài PUBLIC của tài khoản đang hoạt động, mới nhất trước.")
+    public ResponseEntity<ApiResponse<PostPageResponse>> getPublicPosts(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success("Public posts retrieved successfully",
+                postService.getPublicPosts(page, size)));
+    }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(

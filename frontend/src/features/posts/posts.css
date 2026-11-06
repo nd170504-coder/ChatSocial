@@ -1,0 +1,102 @@
+.profile-section-nav { display: flex; gap: 28px; border-top: 1px solid #eff2f7; padding: 0 30px; }
+.workspace-nav { display: flex; gap: 8px; }
+.workspace-nav a { display: inline-flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; color: #74839a; font-size: 12px; font-weight: 600; }
+.workspace-nav a.active { color: var(--primary); background: #edf3ff; }
+.workspace-nav a:hover { text-decoration: none; background: #f0f5fc; }
+.workspace-nav svg { width: 17px; height: 17px; }
+.public-posts-page { max-width: 860px; }
+.public-posts-intro { font-size: 12px; color: #7b89a0; line-height: 1.8; margin: 0; }
+.public-posts-page .posts-section { margin-top: 24px; }
+.profile-section-nav a { display: flex; align-items: center; gap: 8px; padding: 17px 0; font-size: 12px; font-weight: 600; }
+.profile-section-nav a:first-child { border-bottom: 2px solid var(--primary); }
+.profile-section-nav svg { width: 16px; height: 16px; }
+.posts-section { width: min(100%, 760px); margin: 36px auto 0; scroll-margin-top: 24px; }
+.posts-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+.posts-section-heading .form-eyebrow { margin-bottom: 8px; font-size: 9px; }
+.posts-section-heading h2 { margin: 0; font-size: 24px; letter-spacing: -.6px; }
+.posts-section-heading > span { font-size: 11px; color: #7b89a0; }
+.post-composer, .post-card { background: #fff; border: 1px solid #e6ebf3; border-radius: 14px; overflow: hidden; }
+.post-composer { margin-bottom: 22px; }
+.post-editor { padding: 24px; }
+.post-editor-identity, .post-card-header { display: flex; gap: 12px; align-items: center; }
+.post-editor .post-avatar, .post-card .post-avatar { width: 42px; height: 42px; font-size: 14px; border-width: 2px; flex-shrink: 0; box-shadow: none; }
+.post-editor-identity strong, .post-card-author > strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.post-privacy-select { display: flex; align-items: center; gap: 4px; margin-top: 5px; color: #74839a; }
+.post-privacy-select select { border: 0; background: #f3f6fb; color: #52637e; border-radius: 5px; padding: 3px 6px; font-size: 11px; max-width: 160px; }
+.post-textarea { width: 100%; border: 0; border-radius: 6px; min-height: 110px; padding: 16px 0 8px; margin-top: 8px; resize: vertical; background: #fff; color: #263b59; line-height: 1.8; font-size: 14px; }
+.post-textarea:focus-visible { outline-offset: 2px; }
+.post-textarea::placeholder { color: #8e9bb0; }
+.post-editor-meta { display: flex; justify-content: space-between; gap: 16px; color: #8a98ac; font-size: 10px; line-height: 1.7; margin-bottom: 16px; }
+.post-editor-meta > span:last-child { white-space: nowrap; }
+.post-editor-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; border-top: 1px solid #edf0f6; }
+.post-add-image { display: flex; gap: 9px; align-items: center; padding: 7px 0; border: 0; background: none; color: #4c678e; font-size: 12px; text-align: left; }
+.post-add-image > svg { color: #36957d; width: 23px; height: 23px; }
+.post-add-image small { display: block; font-size: 9px; color: #8997ac; margin-top: 4px; }
+.post-editor-submit { display: flex; gap: 10px; margin-left: auto; }
+.post-editor-submit .button { width: auto; min-height: 39px; padding: 9px 17px; gap: 9px; font-size: 11px; margin: 0; }
+.post-editor-submit .button-primary > svg { width: 16px; height: 16px; }
+.post-editor-submit .post-send-icon { transform: rotate(180deg); }
+.post-file-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 9px; margin-bottom: 18px; }
+.post-file-preview { position: relative; min-width: 0; border-radius: 9px; overflow: hidden; background: #f0f4fa; }
+.post-file-preview > img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+.post-file-preview > .icon-button { position: absolute; top: 5px; right: 5px; padding: 4px; background: #ffffffeb; }
+.post-file-preview > .icon-button svg { width: 15px; height: 15px; }
+.post-file-preview > span { display: block; padding: 6px; font-size: 9px; color: #62748d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-card { margin-bottom: 18px; }
+.post-card-header { padding: 22px 24px 16px; align-items: start; }
+.post-card-author { flex: 1; min-width: 0; padding-top: 2px; }
+.post-card-author > div { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: #8a98ac; font-size: 10px; margin-top: 7px; }
+.post-card-author a { color: #7a8ba4; }
+.post-card-author > div > span:last-child { display: inline-flex; gap: 4px; align-items: center; }
+.post-card-tools { display: flex; gap: 5px; }
+.post-card-tools .icon-button { background: transparent; padding: 6px; }
+.post-card-tools .icon-button:hover { background: #eff4fc; }
+.post-card-content { padding: 0 24px 20px; }
+.post-card-content p { font-size: 14px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.post-text-toggle { border: 0; padding: 6px 0 0; background: none; font-size: 12px; color: var(--primary); }
+.post-media-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; background: #f0f4fa; }
+.post-media-1 { grid-template-columns: 1fr; }
+.post-media-3 > :first-child, .post-media-5 > :first-child { grid-column: 1 / -1; }
+.post-image { position: relative; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; background: #edf2f9; display: grid; place-items: center; }
+.post-media-1 .post-image { aspect-ratio: auto; min-height: 180px; }
+.post-image > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.post-media-1 .post-image > img { height: auto; max-height: 640px; object-fit: contain; }
+.post-image-status { display: flex; flex-direction: column; align-items: center; gap: 10px; color: #7e90ab; font-size: 11px; padding: 20px; }
+.post-image-status button, .post-list-error button, .post-retry { background: none; border: 0; color: var(--primary); font-size: 11px; text-decoration: underline; }
+.post-helper, .post-edited { font-size: 10px; color: #8b99ae; }
+.post-edited { margin: 0; padding: 12px 24px; }
+.post-notice, .post-list-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.post-notice > button { padding: 4px; border: 0; background: none; color: inherit; display: grid; place-items: center; }
+.post-empty { text-align: center; padding: 44px 20px; border: 1px dashed #d7e1f0; background: #f9fbff; border-radius: 14px; }
+.post-empty-icon { display: inline-grid; place-items: center; width: 60px; height: 60px; border-radius: 18px; color: #7195d9; background: #edf3ff; transform: rotate(-6deg); }
+.post-empty h3 { font-size: 16px; margin: 20px 0 10px; }
+.post-empty p { font-size: 12px; color: #8291a8; line-height: 1.9; margin: 0; }
+.post-loading { display: flex; justify-content: center; gap: 9px; align-items: center; padding: 25px; font-size: 12px; color: #798ba6; }
+.post-loading-dot { width: 7px; height: 7px; background: #7195d9; border-radius: 50%; }
+.post-load-more { width: auto; margin: 20px auto; min-height: 40px; font-size: 11px; }
+.post-list-end { text-align: center; color: #8b99ae; font-size: 10px; padding: 12px; }
+.post-dialog { width: min(600px, calc(100% - 32px)); }
+.post-dialog .post-editor { padding: 24px 0 0; }
+.post-dialog-actions { display: flex; gap: 12px; }
+.post-dialog-actions .button { margin: 0; }
+.post-delete-button { color: #fff; background: #bd4052; }
+.post-delete-button:hover:not(:disabled) { background: #a72d40; }
+.post-detail-page { max-width: 860px; }
+.post-back-link { display: inline-block; font-size: 12px; margin-bottom: 24px; }
+.post-retry { display: inline-block; margin-left: 12px; }
+@media (max-width: 760px) {
+  .profile-section-nav { padding: 0 20px; }
+  .posts-section { margin-top: 28px; }
+  .posts-section-heading h2 { font-size: 22px; }
+  .posts-section-heading > span { font-size: 10px; }
+  .post-editor { padding: 20px; }
+  .post-card-header { padding: 20px 18px 14px; gap: 9px; }
+  .post-card-content { padding: 0 18px 18px; }
+  .post-card-content p { font-size: 13px; }
+  .post-card-author > div { font-size: 9px; }
+  .post-editor-meta > span:first-child { max-width: 70%; }
+  .post-file-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .post-card-tools { gap: 1px; }
+  .post-dialog { padding: 22px; }
+  .post-dialog .dialog-heading h2 { font-size: 21px; }
+}

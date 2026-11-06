@@ -22,9 +22,19 @@ export async function apiRequest<T>(
   path: `/${string}`,
   options: ApiRequestOptions = {},
 ): Promise<ApiResponse<T>> {
+  const response = await requestResponse(path, options, 'application/json')
+  return response.json() as Promise<ApiResponse<T>>
+}
+
+export async function apiBlobRequest(path: `/${string}`, options: ApiRequestOptions = {}): Promise<Blob> {
+  const response = await requestResponse(path, options, 'application/octet-stream, image/*, application/problem+json')
+  return response.blob()
+}
+
+async function requestResponse(path: `/${string}`, options: ApiRequestOptions, accept: string) {
   const { accessToken, ...requestOptions } = options
   const headers = new Headers(requestOptions.headers)
-  headers.set('Accept', 'application/json')
+  headers.set('Accept', accept)
 
   if (typeof requestOptions.body === 'string' && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -51,5 +61,5 @@ export async function apiRequest<T>(
     throw new ApiError(response.status, problem)
   }
 
-  return response.json() as Promise<ApiResponse<T>>
+  return response
 }

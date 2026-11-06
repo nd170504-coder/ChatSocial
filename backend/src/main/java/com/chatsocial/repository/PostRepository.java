@@ -17,6 +17,13 @@ import java.util.Optional;
 @Repository
 public interface PostRepository extends JpaRepository<Post, String> {
 
+    @Query("""
+            select p from Post p join fetch p.user author
+            where p.privacy = :privacy and author.status = :status
+            """)
+    Slice<Post> findPublicPosts(@Param("privacy") PostPrivacy privacy,
+                               @Param("status") UserStatus status, Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Post p where p.id = :postId")
     Optional<Post> findForUpdateById(@Param("postId") String postId);
