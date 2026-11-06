@@ -11,3 +11,12 @@ export interface UserSearchPage {
   size: number
   hasNext: boolean
 }
+
+export interface FriendRequest {
+  id: string
+  requesterId: string
+  addresseeId: string
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED'
+  createdAt: string
+  updatedAt: string
+}

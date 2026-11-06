@@ -28,8 +28,17 @@
 .friend-pagination { display: flex; justify-content: center; gap: 12px; margin-top: 24px; }
 .friend-pagination .button { margin: 0; width: auto; min-height: 40px; }
 .friend-search-retry { border: 0; background: none; color: inherit; text-decoration: underline; margin-left: 10px; }
+.visitor-friend-action { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 280px; }
+.visitor-add-friend { width: auto; min-height: 39px; padding: 9px 16px; font-size: 11px; gap: 8px; }
+.visitor-friend-action .visitor-relationship { display: inline-flex; align-items: center; gap: 7px; }
+.friend-action-notice, .friend-action-error { font-size: 11px; line-height: 1.6; text-align: right; }
+.friend-action-notice { color: #287450; }
+.friend-action-error { color: #ad3040; }
 .friends-navigation .sidebar-link { gap: 10px; }
 @media (max-width: 760px) {
+  .visitor-profile .visitor-friend-action { flex-basis: 100%; max-width: none; align-items: stretch; }
+  .visitor-friend-action .visitor-relationship { margin-left: 0; justify-content: center; }
+  .friend-action-notice, .friend-action-error { text-align: center; }
   .app-shell > .app-sidebar { flex-direction: row; flex-wrap: wrap; }
   .app-sidebar .friends-navigation { margin-left: auto; }
   .app-sidebar .friends-navigation .sidebar-link { border-radius: 8px; padding: 9px 10px; }

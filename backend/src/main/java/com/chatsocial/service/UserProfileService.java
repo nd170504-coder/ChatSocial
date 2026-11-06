@@ -4,6 +4,8 @@ import com.chatsocial.dto.profile.ProfileRelationship;
 import com.chatsocial.dto.profile.UserProfileResponse;
 import com.chatsocial.entity.UserProfile;
 import com.chatsocial.enums.UserStatus;
+import com.chatsocial.enums.FriendshipStatus;
+import com.chatsocial.repository.FriendRequestRepository;
 import com.chatsocial.exception.ApiException;
 import com.chatsocial.repository.FriendshipRepository;
 import com.chatsocial.repository.UserProfileRepository;
@@ -19,18 +21,29 @@ public class UserProfileService {
     private final UserRepository users;
     private final UserProfileRepository profiles;
     private final FriendshipRepository friendships;
+    private final FriendRequestRepository requests;
 
     @Transactional(readOnly = true)
     public UserProfileResponse get(String viewerId, String userId) {
         var user = users.findById(userId).filter(value -> value.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User profile not found"));
         UserProfile profile = profiles.findByUserId(userId).orElse(null);
-        ProfileRelationship relationship = viewerId.equals(userId) ? ProfileRelationship.SELF
-                : friendships.areFriends(viewerId, userId) ? ProfileRelationship.FRIENDS : ProfileRelationship.NONE;
+        ProfileRelationship relationship = relationship(viewerId, userId);
         return new UserProfileResponse(user.getId(), user.getUsername(),
                 profile == null ? user.getUsername() : profile.getFullName(),
                 profile == null ? null : profile.getAvatarUrl(),
                 profile == null ? null : profile.getCoverUrl(),
                 profile == null ? null : profile.getBio(), relationship);
+    }
+
+    private ProfileRelationship relationship(String viewerId, String userId) {
+        if (viewerId.equals(userId)) return ProfileRelationship.SELF;
+        if (friendships.areFriends(viewerId, userId)) return ProfileRelationship.FRIENDS;
+        String pairKey = viewerId.compareTo(userId) < 0 ? viewerId + ":" + userId : userId + ":" + viewerId;
+        return requests.findByPairKey(pairKey)
+                .filter(request -> request.getStatus() == FriendshipStatus.PENDING)
+                .map(request -> request.getRequester().getId().equals(viewerId)
+                        ? ProfileRelationship.OUTGOING_PENDING : ProfileRelationship.INCOMING_PENDING)
+                .orElse(ProfileRelationship.NONE);
     }
 }

@@ -62,6 +62,12 @@ public class FriendRequest {
     @Setter(AccessLevel.NONE)
     private Instant updatedAt;
 
+    public FriendRequest(User requester, User addressee) {
+        this.requester = requester;
+        this.addressee = addressee;
+        this.status = FriendshipStatus.PENDING;
+    }
+
     @PrePersist
     @PreUpdate
     private void normalizePair() {
