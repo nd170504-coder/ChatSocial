@@ -18,7 +18,7 @@ spring:
   servlet:
     multipart:
       max-file-size: 5MB
-      max-request-size: 6MB
+      max-request-size: 26MB
 
   datasource:
     url: ${DB_URL}
@@ -63,3 +63,4 @@ app:
     url: ${SUPABASE_URL:none}
     secret-key: ${SUPABASE_SECRET_KEY:none}
     bucket: ${SUPABASE_STORAGE_BUCKET:profile-images}
+    post-bucket: ${SUPABASE_POST_BUCKET:post-images}

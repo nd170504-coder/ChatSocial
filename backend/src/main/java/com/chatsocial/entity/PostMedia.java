@@ -40,4 +40,12 @@ public class PostMedia {
 
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
+
+    // mediaUrl stores the private storage object path, never a public/signed URL.
+    public PostMedia(Post post, String storagePath, Integer displayOrder) {
+        this.post = post;
+        this.mediaUrl = storagePath;
+        this.mediaType = MediaType.IMAGE;
+        this.displayOrder = displayOrder;
+    }
 }

@@ -20,6 +20,7 @@ import com.chatsocial.enums.PostPrivacy;
 )
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PUBLIC)
 public class Post {
