@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from '../../api/client'
+import { ApiError, apiBlobRequest, apiRequest } from '../../api/client'
 import { authApi } from './api'
 import type { AuthSession, LoginRequest, User } from './types'
 
@@ -67,16 +67,13 @@ function refresh(): Promise<AuthSession> {
   return refreshPromise
 }
 
-// Retry a protected JSON request once. Public auth requests never trigger refresh.
-export async function authenticatedRequest<T>(
-  path: `/${string}`,
-  options: RequestInit = {},
-) {
+// JSON, multipart and private images share the same token rotation/retry behavior.
+async function withSession<T>(request: (accessToken: string) => Promise<T>) {
   const current = snapshot.session
   if (!current) throw new ApiError(401)
   const startedAt = revision
   try {
-    return await apiRequest<T>(path, { ...options, accessToken: current.accessToken })
+    return await request(current.accessToken)
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401 || startedAt !== revision) throw error
     // Another request may already have rotated the token while this one was in flight.
@@ -84,12 +81,20 @@ export async function authenticatedRequest<T>(
     if (!latest) throw error
     const session = latest.accessToken !== current.accessToken ? latest : await refresh()
     try {
-      return await apiRequest<T>(path, { ...options, accessToken: session.accessToken })
+      return await request(session.accessToken)
     } catch (retryError) {
       if (startedAt === revision && retryError instanceof ApiError && retryError.status === 401) clear()
       throw retryError
     }
   }
+}
+
+export function authenticatedRequest<T>(path: `/${string}`, options: RequestInit = {}) {
+  return withSession(accessToken => apiRequest<T>(path, { ...options, accessToken }))
+}
+
+export function authenticatedBlobRequest(path: `/${string}`, options: RequestInit = {}) {
+  return withSession(accessToken => apiBlobRequest(path, { ...options, accessToken }))
 }
 
 export const authStore = {

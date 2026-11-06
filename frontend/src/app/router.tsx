@@ -9,6 +9,8 @@ import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { AppLayout } from '../layouts/AppLayout'
 import { ProfilePage } from '../features/profile/pages/ProfilePage'
 import { AccountPage } from '../features/account/pages/AccountPage'
+import { PostPage } from '../features/posts/pages/PostPage'
+import { PublicPostsPage } from '../features/posts/pages/PublicPostsPage'
 
 export function AppRouter() {
   return <Routes>
@@ -23,9 +25,11 @@ export function AppRouter() {
     </Route>
     <Route element={<AuthGate requireSession />}>
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Navigate to="/profile" replace />} />
+        <Route path="/" element={<Navigate to="/feed" replace />} />
+        <Route path="/feed" element={<PublicPostsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<ProfilePage editing />} />
+        <Route path="/posts/:postId" element={<PostPage />} />
         <Route path="/settings/account" element={<AccountPage />} />
       </Route>
     </Route>

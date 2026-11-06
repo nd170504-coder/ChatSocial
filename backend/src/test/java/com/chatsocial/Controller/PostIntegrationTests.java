@@ -2,6 +2,9 @@ package com.chatsocial.Controller;
 
 import com.chatsocial.entity.Friendship;
 import com.chatsocial.entity.User;
+import com.chatsocial.entity.UserProfile;
+import com.chatsocial.entity.Post;
+import com.chatsocial.enums.PostPrivacy;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.repository.*;
 import com.chatsocial.service.SupabaseStorageService;
@@ -39,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PostIntegrationTests {
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
+    @Autowired UserProfileRepository profiles;
     @Autowired PostRepository posts;
     @Autowired FriendshipRepository friendships;
     @Autowired CommentRepository comments;
@@ -60,10 +64,53 @@ class PostIntegrationTests {
         media.deleteAll();
         posts.deleteAll();
         friendships.deleteAll();
+        profiles.deleteAll();
         users.deleteAll();
         author = user("author");
         when(storage.newPostPath(anyString(), any())).thenAnswer(invocation ->
                 invocation.getArgument(0) + "/posts/" + UUID.randomUUID() + ".png");
+    }
+
+    @Test
+    void publicFeedOnlyReturnsPublicPostsFromActiveAuthorsAndIncludesAuthorDetails() throws Exception {
+        profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", null, null, null, null));
+        String publicId = create("{\"content\":\"Public A\",\"privacy\":\"PUBLIC\"}", image()).get("id").asText();
+        create("{\"content\":\"Friends A\",\"privacy\":\"FRIENDS\"}");
+        create("{\"content\":\"Private A\",\"privacy\":\"PRIVATE\"}");
+        User viewer = user("viewer");
+        Post other = posts.saveAndFlush(Post.builder().user(viewer).content("Public B").privacy(PostPrivacy.PUBLIC).build());
+        for (UserStatus state : new UserStatus[]{UserStatus.DISABLED, UserStatus.DELETED}) {
+            User unavailable = user(state.name().toLowerCase());
+            posts.saveAndFlush(Post.builder().user(unavailable).content("Hidden").privacy(PostPrivacy.PUBLIC).build());
+            unavailable.setStatus(state);
+            users.saveAndFlush(unavailable);
+        }
+        mvc.perform(get("/api/post/public")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/post/public").param("size", "1")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(other.getId()))
+                .andExpect(jsonPath("$.data.items[0].authorName").value("viewer"))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        mvc.perform(get("/api/post/public").param("page", "1").param("size", "1")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(publicId))
+                .andExpect(jsonPath("$.data.items[0].authorName").value("Minh Anh"))
+                .andExpect(jsonPath("$.data.items[0].authorAvatarUrl").value("/avatar.png"))
+                .andExpect(jsonPath("$.data.items[0].media.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].email").doesNotExist())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        patchPost(publicId, "{\"privacy\":\"PRIVATE\"}", 200);
+        mvc.perform(get("/api/post/public").with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1));
+        mvc.perform(get("/api/post/public").param("page", "-1")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/post/public").param("size", "51")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

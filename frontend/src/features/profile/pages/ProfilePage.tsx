@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router'
 import { Icon } from '../../../components/ui/Icon'
+import { PostSection } from '../../posts/components/PostSection'
 import { useAuth } from '../../auth/hooks/useAuth'
 import { Avatar } from '../components/Avatar'
 import { ImageUploadDialog } from '../components/ImageUploadDialog'
@@ -38,12 +39,13 @@ export function ProfilePage({ editing = false }: { editing?: boolean }) {
         <div className="identity-text"><h2>{profile.fullName}</h2><p>@{session!.user.username}</p></div>
         {!editing && <Link className="button button-secondary profile-edit-button" to="/profile/edit"><Icon name="edit" />Chỉnh sửa hồ sơ</Link>}
       </div>
-      <div className="profile-tab"><Icon name="user" />Giới thiệu</div>
+      {!editing && <nav className="profile-section-nav" aria-label="Nội dung trang cá nhân"><a href="#posts"><Icon name="edit" />Bài viết</a><a href="#about"><Icon name="user" />Giới thiệu</a></nav>}
     </section>
-    {editing ? <ProfileForm key={profile.userId} profile={profile} onSaved={updateProfile} /> : <div className="profile-details-grid">
+    {editing ? <ProfileForm key={profile.userId} profile={profile} onSaved={updateProfile} /> : <div id="about" className="profile-details-grid">
       <section className="profile-card bio-card"><div className="profile-card-heading"><h2>Đôi điều về tôi</h2><span className="card-heading-icon"><Icon name="user" /></span></div>{profile.bio ? <p className="profile-bio">{profile.bio}</p> : <div className="profile-empty"><span aria-hidden="true">“</span><p>Mỗi người đều có một câu chuyện.<br />Câu chuyện của bạn là gì?</p><Link to="/profile/edit">Thêm lời giới thiệu →</Link></div>}</section>
       <section className="profile-card info-card"><div className="profile-card-heading"><h2>Thông tin cá nhân</h2><span className="card-heading-icon"><Icon name="mail" /></span></div><dl className="profile-info"><div><dt>Email</dt><dd>{session!.user.email}</dd></div><div><dt>Ngày sinh</dt><dd className={!profile.dateOfBirth ? 'empty-value' : ''}>{profile.dateOfBirth ? formatBirthDate(profile.dateOfBirth) : 'Chưa chia sẻ'}</dd></div><div><dt>Giới tính</dt><dd className={!profile.gender ? 'empty-value' : ''}>{profile.gender ? genderLabels[profile.gender] : 'Chưa chia sẻ'}</dd></div></dl></section>
     </div>}
+    {!editing && <PostSection key={session!.user.id} userId={session!.user.id} name={profile.fullName} avatarUrl={profile.avatarUrl} />}
     <footer className="profile-footer">Một hồ sơ mang dấu ấn của bạn.<span>ChatSocial</span></footer>
     {uploadType && <ImageUploadDialog type={uploadType} onDismiss={() => setUploadType(null)} onSaved={updated => {
       updateProfile(updated)

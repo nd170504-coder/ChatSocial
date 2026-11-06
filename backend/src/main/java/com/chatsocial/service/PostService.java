@@ -6,6 +6,7 @@ import com.chatsocial.dto.post.PostResponse;
 import com.chatsocial.dto.post.UpdatePostRequest;
 import com.chatsocial.entity.Post;
 import com.chatsocial.entity.PostMedia;
+import com.chatsocial.entity.UserProfile;
 import com.chatsocial.entity.User;
 import com.chatsocial.enums.PostPrivacy;
 import com.chatsocial.enums.UserStatus;
@@ -40,6 +41,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final UserProfileRepository userProfileRepository;
     private final FriendshipRepository friendshipRepository;
     private final PostLikeRepository postLikeRepository;
     private final PostMediaRepository postMediaRepository;
@@ -95,7 +97,8 @@ public class PostService {
                 }
                 List<PostMedia> savedMedia = postMediaRepository.saveAll(media);
                 postMediaRepository.flush();
-                return PostResponse.from(post, savedMedia);
+                return PostResponse.from(post, savedMedia,
+                        userProfileRepository.findByUserId(userId).orElse(null));
             }));
         } catch (RuntimeException exception) {
             if (!cleanupRegistered.get()) {
@@ -207,6 +210,18 @@ public class PostService {
     }
 
     @Transactional(readOnly = true)
+    public PostPageResponse getPublicPosts(int page, int size) {
+        if (page < 0 || size < 1 || size > 50) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên và size phải từ 1 đến 50");
+        }
+        PageRequest pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        Slice<Post> posts = postRepository.findPublicPosts(PostPrivacy.PUBLIC, UserStatus.ACTIVE, pageable);
+        return new PostPageResponse(toResponses(posts.getContent()), posts.getNumber(),
+                posts.getSize(), posts.hasNext());
+    }
+
+    @Transactional(readOnly = true)
     public String getVisibleMediaPath(String currentUserId, String postId, String mediaId) {
         Post post = postRepository.findById(postId).orElseThrow(this::postNotFound);
         if (!canView(post, currentUserId)) {
@@ -218,7 +233,8 @@ public class PostService {
     }
 
     private PostResponse toResponse(Post post) {
-        return PostResponse.from(post, postMediaRepository.findByPostIdOrderByDisplayOrderAsc(post.getId()));
+        return PostResponse.from(post, postMediaRepository.findByPostIdOrderByDisplayOrderAsc(post.getId()),
+                userProfileRepository.findByUserId(post.getUser().getId()).orElse(null));
     }
 
     private List<PostResponse> toResponses(List<Post> posts) {
@@ -226,8 +242,12 @@ public class PostService {
         List<String> ids = posts.stream().map(Post::getId).toList();
         Map<String, List<PostMedia>> mediaByPost = postMediaRepository.findByPostIdInOrderByDisplayOrderAsc(ids)
                 .stream().collect(Collectors.groupingBy(media -> media.getPost().getId()));
+        List<String> authorIds = posts.stream().map(post -> post.getUser().getId()).distinct().toList();
+        Map<String, UserProfile> profilesByUser = userProfileRepository.findByUserIdIn(authorIds).stream()
+                .collect(Collectors.toMap(profile -> profile.getUser().getId(), profile -> profile));
         return posts.stream().map(post -> PostResponse.from(post,
-                mediaByPost.getOrDefault(post.getId(), List.of()))).toList();
+                mediaByPost.getOrDefault(post.getId(), List.of()),
+                profilesByUser.get(post.getUser().getId()))).toList();
     }
 
     private void deletePostImageQuietly(String path) {
