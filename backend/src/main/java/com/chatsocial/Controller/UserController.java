@@ -4,6 +4,8 @@ import com.chatsocial.dto.ApiResponse;
 import com.chatsocial.dto.post.PostPageResponse;
 import com.chatsocial.dto.user.AccountActionRequest;
 import com.chatsocial.dto.user.UserResponse;
+import com.chatsocial.dto.user.UserSearchResponse;
+import com.chatsocial.service.UserSearchService;
 import com.chatsocial.service.AccountService;
 import com.chatsocial.service.AuthService;
 import com.chatsocial.service.PostService;
@@ -25,6 +27,17 @@ public class UserController {
     private final AuthService authService;
     private final AccountService accountService;
     private final PostService postService;
+    private final UserSearchService userSearchService;
+
+    @GetMapping("/search")
+    @Operation(summary = "Tìm người dùng", description = "Tìm một phần username hoặc email đầy đủ, không phân biệt hoa thường. Chỉ trả tài khoản đang hoạt động, loại chính mình.")
+    public ResponseEntity<ApiResponse<UserSearchResponse>> search(
+            @RequestParam("q") String query,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success("Users retrieved successfully",
+                userSearchService.search(SecurityUtils.getCurrentUserId(), query, page, size)));
+    }
 
     @GetMapping("/me")
     @Operation(summary = "Lấy thông tin tài khoản hiện tại")

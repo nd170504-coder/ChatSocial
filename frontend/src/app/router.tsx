@@ -11,6 +11,7 @@ import { ProfilePage } from '../features/profile/pages/ProfilePage'
 import { AccountPage } from '../features/account/pages/AccountPage'
 import { PostPage } from '../features/posts/pages/PostPage'
 import { PublicPostsPage } from '../features/posts/pages/PublicPostsPage'
+import { FindFriendsPage } from '../features/friends/pages/FindFriendsPage'
 
 export function AppRouter() {
   return <Routes>
@@ -27,6 +28,7 @@ export function AppRouter() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/feed" replace />} />
         <Route path="/feed" element={<PublicPostsPage />} />
+        <Route path="/friends/search" element={<FindFriendsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<ProfilePage editing />} />
         <Route path="/posts/:postId" element={<PostPage />} />
