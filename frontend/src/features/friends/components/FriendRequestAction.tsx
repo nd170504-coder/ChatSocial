@@ -22,23 +22,34 @@ export function FriendRequestAction({ profile, onUpdated, onBusyChange }: {
     return () => { active.current = false }
   }, [])
 
-  async function send() {
-    if (locked.current || profile.relationship !== 'NONE') return
+  async function mutate(action: 'send' | 'cancel') {
+    if (locked.current || (action === 'send' ? profile.relationship !== 'NONE' : profile.relationship !== 'OUTGOING_PENDING')) return
+    if (action === 'cancel' && !profile.friendRequestId) {
+      setError('Hãy làm mới hồ sơ để lấy thông tin lời mời.'); return
+    }
     locked.current = true; setBusy(true); onBusyChange(true); setError(''); setNotice('')
     try {
-      await friendRequestApi.send(profile.userId)
-      if (active.current) {
-        onUpdated({ ...profile, relationship: 'OUTGOING_PENDING' })
-        setNotice('Đã gửi lời mời kết bạn.')
+      if (action === 'send') {
+        const response = await friendRequestApi.send(profile.userId)
+        if (active.current) {
+          onUpdated({ ...profile, relationship: 'OUTGOING_PENDING', friendRequestId: response.data.id })
+          setNotice('Đã gửi lời mời kết bạn.')
+        }
+      } else {
+        await friendRequestApi.cancel(profile.friendRequestId!)
+        if (active.current) {
+          onUpdated({ ...profile, relationship: 'NONE', friendRequestId: null })
+          setNotice('Đã hủy lời mời kết bạn.')
+        }
       }
     } catch (cause) {
       if (!active.current) return
-      if (cause instanceof ApiError && cause.status === 409) {
+      if (cause instanceof ApiError && (cause.status === 409 || (action === 'cancel' && cause.status === 404))) {
         try {
           const response = await profileApi.getUser(profile.userId)
           if (active.current) { onUpdated(response.data); setNotice('Đã cập nhật trạng thái quan hệ.') }
-        } catch { if (active.current) setError(friendRequestError(cause)) }
-      } else setError(friendRequestError(cause))
+        } catch { if (active.current) setError(friendRequestError(cause, action)) }
+      } else setError(friendRequestError(cause, action))
     } finally {
       locked.current = false
       if (active.current) { setBusy(false); onBusyChange(false) }
@@ -48,8 +59,9 @@ export function FriendRequestAction({ profile, onUpdated, onBusyChange }: {
   if (profile.relationship === 'SELF') return null
   return <div className="visitor-friend-action">
     {profile.relationship === 'NONE'
-      ? <button type="button" className="button button-primary visitor-add-friend" disabled={busy} onClick={() => void send()}><Icon name="user" />{busy ? 'Đang gửi…' : 'Kết bạn'}</button>
+      ? <button type="button" className="button button-primary visitor-add-friend" disabled={busy} onClick={() => void mutate('send')}><Icon name="user" />{busy ? 'Đang gửi…' : 'Kết bạn'}</button>
       : <span className={`visitor-relationship ${profile.relationship === 'FRIENDS' ? 'is-friend' : ''}`}><Icon name={profile.relationship === 'INCOMING_PENDING' ? 'mail' : 'check'} width="15" height="15" />{relationshipLabels[profile.relationship]}</span>}
+    {profile.relationship === 'OUTGOING_PENDING' && <button type="button" className="button button-secondary visitor-cancel-friend" disabled={busy} onClick={() => void mutate('cancel')}><Icon name="close" width="15" height="15" />{busy ? 'Đang hủy…' : 'Hủy lời mời'}</button>}
     {notice && <span className="friend-action-notice" role="status">{notice}</span>}
     {error && <span className="friend-action-error" role="alert">{error}</span>}
   </div>

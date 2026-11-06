@@ -20,3 +20,19 @@ export interface FriendRequest {
   createdAt: string
   updatedAt: string
 }
+
+export type FriendRequestDirection = 'incoming' | 'outgoing'
+
+export interface FriendRequestListItem {
+  id: string
+  user: UserSearchItem
+  status: 'PENDING'
+  sentAt: string
+}
+
+export interface FriendRequestPage {
+  items: FriendRequestListItem[]
+  page: number
+  size: number
+  hasNext: boolean
+}

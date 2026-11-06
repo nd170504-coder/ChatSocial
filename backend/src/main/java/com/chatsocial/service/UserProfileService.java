@@ -28,22 +28,24 @@ public class UserProfileService {
         var user = users.findById(userId).filter(value -> value.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User profile not found"));
         UserProfile profile = profiles.findByUserId(userId).orElse(null);
-        ProfileRelationship relationship = relationship(viewerId, userId);
+        RelationshipInfo relationship = relationship(viewerId, userId);
         return new UserProfileResponse(user.getId(), user.getUsername(),
                 profile == null ? user.getUsername() : profile.getFullName(),
                 profile == null ? null : profile.getAvatarUrl(),
                 profile == null ? null : profile.getCoverUrl(),
-                profile == null ? null : profile.getBio(), relationship);
+                profile == null ? null : profile.getBio(), relationship.status(), relationship.requestId());
     }
 
-    private ProfileRelationship relationship(String viewerId, String userId) {
-        if (viewerId.equals(userId)) return ProfileRelationship.SELF;
-        if (friendships.areFriends(viewerId, userId)) return ProfileRelationship.FRIENDS;
+    private RelationshipInfo relationship(String viewerId, String userId) {
+        if (viewerId.equals(userId)) return new RelationshipInfo(ProfileRelationship.SELF, null);
+        if (friendships.areFriends(viewerId, userId)) return new RelationshipInfo(ProfileRelationship.FRIENDS, null);
         String pairKey = viewerId.compareTo(userId) < 0 ? viewerId + ":" + userId : userId + ":" + viewerId;
         return requests.findByPairKey(pairKey)
                 .filter(request -> request.getStatus() == FriendshipStatus.PENDING)
-                .map(request -> request.getRequester().getId().equals(viewerId)
-                        ? ProfileRelationship.OUTGOING_PENDING : ProfileRelationship.INCOMING_PENDING)
-                .orElse(ProfileRelationship.NONE);
+                .map(request -> new RelationshipInfo(request.getRequester().getId().equals(viewerId)
+                        ? ProfileRelationship.OUTGOING_PENDING : ProfileRelationship.INCOMING_PENDING, request.getId()))
+                .orElse(new RelationshipInfo(ProfileRelationship.NONE, null));
     }
+
+    private record RelationshipInfo(ProfileRelationship status, String requestId) {}
 }

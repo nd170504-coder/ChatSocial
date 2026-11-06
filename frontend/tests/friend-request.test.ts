@@ -14,7 +14,9 @@ it('only shows the send button when no friendship or pending invitation exists',
   }))
   expect(render('NONE')).toContain('<button')
   expect(render('NONE')).toContain('Kết bạn')
-  for (const [state, label] of [['OUTGOING_PENDING', 'Đã gửi lời mời'], ['INCOMING_PENDING', 'Đã nhận lời mời'], ['FRIENDS', 'Bạn bè']] as const) {
+  expect(render('OUTGOING_PENDING')).toContain('Đã gửi lời mời')
+  expect(render('OUTGOING_PENDING')).toContain('Hủy lời mời')
+  for (const [state, label] of [['INCOMING_PENDING', 'Đã nhận lời mời'], ['FRIENDS', 'Bạn bè']] as const) {
     const markup = render(state)
     expect(markup).toContain(label)
     expect(markup).not.toContain('<button')
@@ -39,4 +41,32 @@ it('sends only the recipient userId using the logged-in token', async () => {
   expect(options?.method).toBe('POST')
   expect(JSON.parse(options?.body as string)).toEqual({ userId: 'recipient' })
   expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
+  fetchMock.mockResolvedValueOnce(response(null))
+  await friendRequestApi.cancel('invitation')
+  const [cancelUrl, cancelOptions] = fetchMock.mock.calls[2]
+  expect(String(cancelUrl)).toMatch(/\/api\/friend-requests\/invitation$/)
+  expect(cancelOptions?.method).toBe('DELETE')
+  expect(cancelOptions?.body).toBeUndefined()
+  expect(new Headers(cancelOptions?.headers).get('Authorization')).toBe('Bearer access')
+})
+
+it('loads the incoming/outgoing pages with authentication, pagination and cancellation signals', async () => {
+  vi.resetModules()
+  const fetchMock = vi.fn<typeof fetch>()
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+  const response = (data: unknown) => new Response(JSON.stringify({ success: true, message: 'OK', data }))
+  const { authStore } = await import('../src/features/auth/session')
+  fetchMock.mockResolvedValueOnce(response({ accessToken: 'access', refreshToken: 'refresh', user: { id: 'viewer' } }))
+  await authStore.login({ email: 'viewer@example.com', password: 'password123' })
+  fetchMock.mockImplementation(async () => response({ items: [], page: 2, size: 12, hasNext: false }))
+  const { friendRequestApi } = await import('../src/features/friends/api')
+  const controller = new AbortController()
+  for (const direction of ['incoming', 'outgoing'] as const) {
+    await friendRequestApi.list(direction, 2, controller.signal)
+    const [url, options] = fetchMock.mock.calls.at(-1)!
+    expect(String(url)).toContain(`/friend-requests/${direction}?page=2&size=12`)
+    expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
+    expect(options?.signal).toBe(controller.signal)
+  }
 })

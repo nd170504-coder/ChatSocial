@@ -29,4 +29,5 @@ export interface UserProfile {
   coverUrl: string | null
   bio: string | null
   relationship: ProfileRelationship
+  friendRequestId?: string | null
 }

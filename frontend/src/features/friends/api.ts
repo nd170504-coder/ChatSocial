@@ -1,7 +1,13 @@
 import { authenticatedRequest } from '../auth/session'
-import type { FriendRequest, UserSearchPage } from './types'
+import type { FriendRequest, FriendRequestDirection, FriendRequestPage, UserSearchPage } from './types'
 
 export const friendRequestApi = {
+  list: (direction: FriendRequestDirection, page = 0, signal?: AbortSignal) => authenticatedRequest<FriendRequestPage>(
+    `/friend-requests/${direction}?page=${page}&size=12`, { signal },
+  ),
+  cancel: (requestId: string) => authenticatedRequest<null>(`/friend-requests/${encodeURIComponent(requestId)}`, {
+    method: 'DELETE',
+  }),
   send: (userId: string) => authenticatedRequest<FriendRequest>('/friend-requests', {
     method: 'POST', body: JSON.stringify({ userId }),
   }),
