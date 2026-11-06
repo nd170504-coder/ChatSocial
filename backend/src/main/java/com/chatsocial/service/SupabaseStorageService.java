@@ -27,6 +27,70 @@ public class SupabaseStorageService {
 
     public record StoredImage(String path, String url) {}
 
+    public record DownloadedImage(byte[] bytes, String contentType) {}
+
+    public String newPostPath(String userId, ValidatedImage image) {
+        return UUID.fromString(userId) + "/posts/" + UUID.randomUUID() + "." + image.extension();
+    }
+
+    public void uploadPostImage(String path, ValidatedImage image) {
+        validatePostPath(path);
+        HttpRequest upload = request(baseUrl() + "/storage/v1/object/" + postBucket() + "/" + path)
+                .header("Content-Type", image.contentType()).header("x-upsert", "false")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(image.bytes())).build();
+        send(upload);
+    }
+
+    public void deletePostImage(String path) {
+        validatePostPath(path);
+        HttpRequest deletion = request(baseUrl() + "/storage/v1/object/" + postBucket())
+                .header("Content-Type", "application/json")
+                .method("DELETE", HttpRequest.BodyPublishers.ofString(
+                        json.writeValueAsString(Map.of("prefixes", List.of(path)))))
+                .build();
+        send(deletion);
+    }
+
+    public DownloadedImage downloadPostImage(String path) {
+        validatePostPath(path);
+        HttpRequest download = request(baseUrl() + "/storage/v1/object/authenticated/"
+                + postBucket() + "/" + path).GET().build();
+        try {
+            var response = client.send(download, HttpResponse.BodyHandlers.ofInputStream());
+            try (var body = response.body()) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new ApiException(HttpStatus.BAD_GATEWAY, "Unable to download post image");
+                }
+                byte[] bytes = body.readNBytes(5 * 1024 * 1024 + 1);
+                if (bytes.length > 5 * 1024 * 1024) {
+                    throw new ApiException(HttpStatus.BAD_GATEWAY, "Stored post image exceeds size limit");
+                }
+                String contentType = path.endsWith(".png") ? "image/png"
+                        : path.endsWith(".webp") ? "image/webp" : "image/jpeg";
+                return new DownloadedImage(bytes, contentType);
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Storage request was interrupted");
+        } catch (IOException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Unable to reach Supabase Storage");
+        }
+    }
+
+    private String postBucket() {
+        String bucket = properties.getPostBucket();
+        if (bucket == null || !bucket.matches("[a-zA-Z0-9_-]+")) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Post storage bucket is not configured");
+        }
+        return bucket;
+    }
+
+    private void validatePostPath(String path) {
+        if (path == null || !path.matches("[0-9a-f-]{36}/posts/[0-9a-f-]{36}\\.(jpg|png|webp)")) {
+            throw new IllegalArgumentException("Invalid post image path");
+        }
+    }
+
     public StoredImage upload(String userId, ProfileImageType type, ValidatedImage image) {
         String baseUrl = baseUrl();
         String path = UUID.fromString(userId) + "/" + type.getFolder() + "/" + UUID.randomUUID()
@@ -85,8 +149,12 @@ public class SupabaseStorageService {
     }
 
     private HttpRequest.Builder request(String url) {
-        return HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
                 .header("apikey", properties.getSecretKey());
+        if (!properties.getSecretKey().startsWith("sb_secret_")) {
+            builder.header("Authorization", "Bearer " + properties.getSecretKey());
+        }
+        return builder;
     }
 
     private void send(HttpRequest request) {

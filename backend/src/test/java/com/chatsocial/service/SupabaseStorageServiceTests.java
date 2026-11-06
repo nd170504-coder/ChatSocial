@@ -21,6 +21,7 @@ class SupabaseStorageServiceTests {
     private SupabaseStorageService storage;
     private final AtomicInteger status = new AtomicInteger(200);
     private final AtomicReference<Received> received = new AtomicReference<>();
+    private final AtomicReference<byte[]> responseBody = new AtomicReference<>(new byte[0]);
     private static final String USER_ID = "00000000-0000-0000-0000-000000000001";
 
     @BeforeEach
@@ -29,8 +30,11 @@ class SupabaseStorageServiceTests {
         server.createContext("/", exchange -> {
             received.set(new Received(exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
                     exchange.getRequestHeaders().getFirst("apikey"),
-                    exchange.getRequestHeaders().getFirst("Content-Type"), exchange.getRequestBody().readAllBytes()));
-            exchange.sendResponseHeaders(status.get(), -1);
+                    exchange.getRequestHeaders().getFirst("Content-Type"), exchange.getRequestBody().readAllBytes(),
+                    exchange.getRequestHeaders().getFirst("Authorization")));
+            byte[] body = responseBody.get();
+            exchange.sendResponseHeaders(status.get(), body.length == 0 ? -1 : body.length);
+            if (body.length > 0) exchange.getResponseBody().write(body);
             exchange.close();
         });
         server.start();
@@ -92,5 +96,48 @@ class SupabaseStorageServiceTests {
         assertNull(received.get());
     }
 
-    private record Received(String method, String path, String key, String contentType, byte[] body) {}
+    @Test
+    void postImagesUsePrivateBucketAndDeleteExactPath() throws Exception {
+        var image = new ValidatedImage(new byte[]{1, 2, 3}, "image/png", "png");
+        String path = storage.newPostPath(USER_ID, image);
+        storage.uploadPostImage(path, image);
+        assertEquals("/storage/v1/object/post-images/" + path, received.get().path());
+        assertEquals("POST", received.get().method());
+        assertArrayEquals(image.bytes(), received.get().body());
+        storage.deletePostImage(path);
+        assertEquals("DELETE", received.get().method());
+        assertEquals("/storage/v1/object/post-images", received.get().path());
+        assertEquals(path, new ObjectMapper().readTree(new String(received.get().body(), StandardCharsets.UTF_8))
+                .get("prefixes").get(0).asText());
+        assertThrows(IllegalArgumentException.class, () -> storage.deletePostImage("../other.png"));
+        assertThrows(IllegalArgumentException.class, () -> storage.downloadPostImage(USER_ID + "/avatars/photo.png"));
+    }
+
+    @Test
+    void privateDownloadUsesAuthenticatedEndpointAndLegacyBearerKey() {
+        responseBody.set(new byte[]{1, 2, 3});
+        String path = USER_ID + "/posts/00000000-0000-0000-0000-000000000002.webp";
+        var image = storage.downloadPostImage(path);
+        assertEquals("GET", received.get().method());
+        assertEquals("/storage/v1/object/authenticated/post-images/" + path, received.get().path());
+        assertEquals("Bearer test-secret", received.get().authorization());
+        assertArrayEquals(responseBody.get(), image.bytes());
+        assertEquals("image/webp", image.contentType());
+    }
+
+    @Test
+    void newSecretKeyIsOnlySentAsApiKeyAndFailedDownloadBecomesGatewayError() {
+        storage = new SupabaseStorageService(new SupabaseProperties(baseUrl, "sb_secret_fixture", "profile-images"),
+                HttpClient.newHttpClient(), new ObjectMapper());
+        String path = USER_ID + "/posts/00000000-0000-0000-0000-000000000002.png";
+        storage.downloadPostImage(path);
+        assertEquals("sb_secret_fixture", received.get().key());
+        assertNull(received.get().authorization());
+        status.set(403);
+        ApiException exception = assertThrows(ApiException.class, () -> storage.downloadPostImage(path));
+        assertEquals(HttpStatus.BAD_GATEWAY, exception.getStatus());
+    }
+
+    private record Received(String method, String path, String key, String contentType, byte[] body,
+                            String authorization) {}
 }

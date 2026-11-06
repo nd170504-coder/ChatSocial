@@ -15,4 +15,11 @@ public class SupabaseProperties {
     private String url;
     private String secretKey;
     private String bucket;
+    private String postBucket = "post-images";
+
+    public SupabaseProperties(String url, String secretKey, String bucket) {
+        this.url = url;
+        this.secretKey = secretKey;
+        this.bucket = bucket;
+    }
 }
