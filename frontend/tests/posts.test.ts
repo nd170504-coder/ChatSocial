@@ -93,6 +93,30 @@ describe('Post API contract', () => {
     expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE')
   })
 
+  it('uses paginated comments, count, create and delete endpoints', async () => {
+    await login()
+    const { postApi } = await import('../src/features/posts/api')
+    const signal = new AbortController().signal
+    const comment = { id: 'comment-1', postId: 'post-1', userId: user.id, fullName: 'Minh', avatarUrl: null, content: 'Hay quá!', createdAt: '2026-11-08T00:00:00Z' }
+    fetchMock.mockResolvedValueOnce(response({ items: [comment], page: 2, size: 10, hasNext: true }))
+      .mockResolvedValueOnce(response({ postId: 'post-1', commentCount: 1 }))
+      .mockResolvedValueOnce(response(comment))
+      .mockResolvedValueOnce(response({ postId: 'post-1', commentCount: 0 }))
+    expect((await postApi.comments('post-1', 2, signal)).data.items).toEqual([comment])
+    expect((await postApi.commentCount('post-1', signal)).data.commentCount).toBe(1)
+    expect((await postApi.createComment('post-1', comment.content)).data).toEqual(comment)
+    expect((await postApi.deleteComment('post-1', comment.id)).data.commentCount).toBe(0)
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/post\/post-1\/comments\?page=2&size=10$/)
+    expect(String(fetchMock.mock.calls[2][0])).toMatch(/\/post\/post-1\/comments\/count$/)
+    expect(fetchMock.mock.calls[1][1]?.signal).toBe(signal)
+    expect(fetchMock.mock.calls[2][1]?.signal).toBe(signal)
+    expect(fetchMock.mock.calls[3][1]?.method).toBe('POST')
+    expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toEqual({ content: comment.content })
+    expect(String(fetchMock.mock.calls[4][0])).toMatch(/\/post\/post-1\/comments\/comment-1$/)
+    expect(fetchMock.mock.calls[4][1]?.method).toBe('DELETE')
+    for (const [, options] of fetchMock.mock.calls.slice(1)) expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer old-access')
+  })
+
   it('uses the backend pagination and PATCH/DELETE endpoints', async () => {
     await login()
     const { postApi } = await import('../src/features/posts/api')

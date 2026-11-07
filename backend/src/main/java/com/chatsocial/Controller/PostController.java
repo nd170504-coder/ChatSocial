@@ -1,6 +1,10 @@
 package com.chatsocial.Controller;
 
 import com.chatsocial.dto.ApiResponse;
+import com.chatsocial.dto.comment.CommentCountResponse;
+import com.chatsocial.dto.comment.CommentPageResponse;
+import com.chatsocial.dto.comment.CommentResponse;
+import com.chatsocial.dto.comment.CreateCommentRequest;
 import com.chatsocial.dto.post.*;
 import com.chatsocial.service.PostService;
 import com.chatsocial.service.SupabaseStorageService;
@@ -141,6 +145,42 @@ public class PostController {
         var response = postService.unlikePost(SecurityUtils.getCurrentUserId(), postId);
 
         return ResponseEntity.ok(ApiResponse.success("Post unliked successfully", response));
+    }
+
+    @GetMapping("/{postId}/comments")
+    @Operation(summary = "Xem danh sách bình luận")
+    public ResponseEntity<ApiResponse<CommentPageResponse>> getComments(
+            @PathVariable("postId") String postId,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
+    ) {
+        var response = postService.getComments(SecurityUtils.getCurrentUserId(), postId, page, size);
+
+        return ResponseEntity.ok(ApiResponse.success("Comments retrieved successfully", response));
+    }
+
+    @GetMapping("/{postId}/comments/count")
+    @Operation(summary = "Đếm số bình luận")
+    public ResponseEntity<ApiResponse<CommentCountResponse>> getCommentCount(@PathVariable("postId") String postId) {
+        var response = postService.getCommentCount(SecurityUtils.getCurrentUserId(), postId);
+
+        return ResponseEntity.ok(ApiResponse.success("Comment count retrieved successfully", response));
+    }
+
+    @PostMapping("/{postId}/comments")
+    @Operation(summary = "Thêm bình luận")
+    public ResponseEntity<ApiResponse<CommentResponse>> createComment(@PathVariable("postId") String postId, @Valid @RequestBody CreateCommentRequest request) {
+        var response = postService.createComment(SecurityUtils.getCurrentUserId(), postId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Comment created successfully", response));
+    }
+
+    @DeleteMapping("/{postId}/comments/{commentId}")
+    @Operation(summary = "Xóa bình luận của mình")
+    public ResponseEntity<ApiResponse<CommentCountResponse>> deleteComment(@PathVariable("postId") String postId, @PathVariable("commentId") String commentId) {
+        var response = postService.deleteComment(SecurityUtils.getCurrentUserId(), postId, commentId);
+
+        return ResponseEntity.ok(ApiResponse.success("Comment deleted successfully", response));
     }
 
 }

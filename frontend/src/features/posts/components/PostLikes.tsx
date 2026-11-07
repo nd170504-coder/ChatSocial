@@ -4,7 +4,7 @@ import { postApi } from '../api'
 import type { PostLikeStatus } from '../types'
 import { postError } from '../utils'
 
-export function PostLikes({ postId }: { postId: string }) {
+export function usePostLikes(postId: string) {
   const [data, setData] = useState<PostLikeStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -48,19 +48,22 @@ export function PostLikes({ postId }: { postId: string }) {
     }
   }
 
-  return <footer className="post-likes" aria-label="Lượt thích bài viết">
-    <div className="post-likes-row" aria-busy={loading || busy}>
+  function retry() { setError(''); setLoading(true); setAttempt(value => value + 1) }
+  return { data, loading, busy, error, toggle, retry }
+}
+
+export function PostLikes({ state }: { state: ReturnType<typeof usePostLikes> }) {
+  const { data, loading, busy, error, toggle, retry } = state
+  return <div className="post-likes" aria-label="Lượt thích bài viết">
+    <div aria-busy={loading || busy}>
       <button className={`post-like-button${data?.likedByMe ? ' is-liked' : ''}`} type="button"
         aria-label={data?.likedByMe ? 'Bỏ thích bài viết' : 'Thích bài viết'} aria-pressed={data?.likedByMe ?? false}
         disabled={!data || loading || busy} onClick={() => void toggle()}>
-        <Icon name="like" /><span>{busy ? 'Đang xử lý…' : data?.likedByMe ? 'Đã thích' : 'Thích'}</span>
+        <Icon name="like" /><span aria-live="polite">{loading || busy ? '…' : data ? data.likeCount.toLocaleString('vi-VN') : '—'}</span>
       </button>
-      <span className="post-like-count" aria-live="polite">
-        {loading ? 'Đang tải lượt thích…' : data ? `${data.likeCount.toLocaleString('vi-VN')} lượt thích` : 'Chưa tải được lượt thích'}
-      </span>
     </div>
     {error && <div className="post-like-error" role="alert"><span>{error}</span>
-      <button type="button" disabled={loading || busy} onClick={() => { setError(''); setLoading(true); setAttempt(value => value + 1) }}>Thử lại</button>
+      <button type="button" disabled={loading || busy} onClick={retry}>Thử lại</button>
     </div>}
-  </footer>
+  </div>
 }
