@@ -47,6 +47,8 @@
 .post-card-author { flex: 1; min-width: 0; padding-top: 2px; }
 .post-card-author > div { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: #8a98ac; font-size: 10px; margin-top: 7px; }
 .post-card-author a { color: #7a8ba4; }
+.post-card-author .post-author-name { color: #263b59; }
+.post-author-avatar { flex-shrink: 0; border-radius: 50%; }
 .post-card-author > div > span:last-child { display: inline-flex; gap: 4px; align-items: center; }
 .post-card-tools { display: flex; gap: 5px; }
 .post-card-tools .icon-button { background: transparent; padding: 6px; }

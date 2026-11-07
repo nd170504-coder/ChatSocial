@@ -57,6 +57,21 @@ describe('Authenticated multipart upload', () => {
     vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
   })
 
+  it('loads another profile through the authenticated user-specific endpoint', async () => {
+    const { authStore } = await import('../src/features/auth/session')
+    const { profileApi } = await import('../src/features/profile/api')
+    const response = (data: unknown) => new Response(JSON.stringify({ success: true, message: 'OK', data }))
+    fetchMock.mockResolvedValueOnce(response({ accessToken: 'access', refreshToken: 'refresh', user: { id: 'viewer' } }))
+    await authStore.login({ email: 'viewer@example.com', password: 'password123' })
+    fetchMock.mockResolvedValueOnce(response({ userId: 'author', username: 'author', relationship: 'NONE' }))
+    const controller = new AbortController()
+    expect((await profileApi.getUser('author', controller.signal)).data.relationship).toBe('NONE')
+    const [url, options] = fetchMock.mock.calls[1]
+    expect(String(url)).toMatch(/\/users\/author\/profile$/)
+    expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
+    expect(options?.signal).toBe(controller.signal)
+  })
+
   it('reuses the file after token rotation without manually setting a multipart boundary', async () => {
     const { authStore } = await import('../src/features/auth/session')
     const { profileApi } = await import('../src/features/profile/api')

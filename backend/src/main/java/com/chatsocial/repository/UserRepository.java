@@ -7,8 +7,23 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
+import com.chatsocial.enums.UserStatus;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 
 public interface UserRepository extends JpaRepository<User, String> {
+    @Query("""
+            select u from User u
+            where u.status = :status and u.id <> :currentUserId
+              and ((:emailSearch = true and u.email = :query)
+                or (:emailSearch = false and u.username like :pattern escape '!'))
+            """)
+    Slice<User> searchActiveUsers(@Param("currentUserId") String currentUserId,
+                                  @Param("status") UserStatus status,
+                                  @Param("emailSearch") boolean emailSearch,
+                                  @Param("query") String query,
+                                  @Param("pattern") String pattern, Pageable pageable);
+
     Optional<User> findByEmail(String email);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

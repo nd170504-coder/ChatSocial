@@ -18,3 +18,16 @@ export interface UpdateProfileRequest {
 }
 
 export type ProfileImageType = 'avatar' | 'cover'
+
+export type ProfileRelationship = 'SELF' | 'FRIENDS' | 'NONE' | 'OUTGOING_PENDING' | 'INCOMING_PENDING'
+
+export interface UserProfile {
+  userId: string
+  username: string
+  fullName: string
+  avatarUrl: string | null
+  coverUrl: string | null
+  bio: string | null
+  relationship: ProfileRelationship
+  friendRequestId?: string | null
+}
