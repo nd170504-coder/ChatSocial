@@ -214,6 +214,44 @@ class PostIntegrationTests {
     }
 
     @Test
+    void likesAreIdempotentAndRequirePostVisibility() throws Exception {
+        JsonNode post = create("{\"content\":\"Friends\",\"privacy\":\"FRIENDS\"}");
+        String id = post.get("id").asText();
+        String url = "/api/post/" + id + "/likes";
+        User viewer = user("viewer");
+        mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        for (var request : java.util.List.of(get(url), put(url), delete(url))) {
+            mvc.perform(request.with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        mvc.perform(get(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(0))
+                .andExpect(jsonPath("$.data.likedByMe").value(false));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(put(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.postId").value(id))
+                    .andExpect(jsonPath("$.data.likeCount").value(1))
+                    .andExpect(jsonPath("$.data.likedByMe").value(true));
+        }
+        mvc.perform(get(url).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(1))
+                .andExpect(jsonPath("$.data.likedByMe").value(false));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(delete(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(0))
+                    .andExpect(jsonPath("$.data.likedByMe").value(false));
+        }
+        patchPost(id, "{\"privacy\":\"PRIVATE\"}", 200);
+        for (var request : java.util.List.of(get(url), put(url), delete(url))) {
+            mvc.perform(request.with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+        mvc.perform(put(url).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likedByMe").value(true));
+    }
+
+    @Test
     void feedRequiresLoginAndValidPagination() throws Exception {
         mvc.perform(get("/api/post/feed")).andExpect(status().isUnauthorized());
         for (String[] params : new String[][]{{"page", "-1"}, {"size", "0"}, {"size", "51"}, {"page", "abc"}}) {

@@ -1,5 +1,11 @@
 export type PostPrivacy = 'PUBLIC' | 'FRIENDS' | 'PRIVATE'
 
+export interface PostLikeStatus {
+  postId: string
+  likeCount: number
+  likedByMe: boolean
+}
+
 export interface PostMedia {
   id: string
   url: string

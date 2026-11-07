@@ -72,6 +72,27 @@ describe('Post API contract', () => {
     expect(new Headers(downloads[1][1]?.headers).get('Accept')).toContain('application/octet-stream')
   })
 
+  it('loads like status and sends explicit like/unlike requests with authentication', async () => {
+    await login()
+    const { postApi } = await import('../src/features/posts/api')
+    const signal = new AbortController().signal
+    const initial = { postId: 'post-1', likeCount: 0, likedByMe: false }
+    fetchMock.mockResolvedValueOnce(response(initial))
+      .mockResolvedValueOnce(response({ ...initial, likeCount: 1, likedByMe: true }))
+      .mockResolvedValueOnce(response(initial))
+    expect((await postApi.likes('post-1', signal)).data).toEqual(initial)
+    expect((await postApi.like('post-1')).data.likedByMe).toBe(true)
+    expect((await postApi.unlike('post-1')).data.likeCount).toBe(0)
+    for (const [url, options] of fetchMock.mock.calls.slice(1)) {
+      expect(String(url)).toMatch(/\/api\/post\/post-1\/likes$/)
+      expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer old-access')
+      expect(options?.body).toBeUndefined()
+    }
+    expect(fetchMock.mock.calls[1][1]?.signal).toBe(signal)
+    expect(fetchMock.mock.calls[2][1]?.method).toBe('PUT')
+    expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE')
+  })
+
   it('uses the backend pagination and PATCH/DELETE endpoints', async () => {
     await login()
     const { postApi } = await import('../src/features/posts/api')

@@ -8,6 +8,7 @@ import type { Post } from '../types'
 import { postError, postTime, privacyLabels } from '../utils'
 import { PostEditor } from './PostEditor'
 import { PostGallery } from './PostGallery'
+import { PostLikes } from './PostLikes'
 
 function PostDialog({ post, mode, name, avatarUrl, onClose, onSaved, onDeleted }: {
   post: Post; mode: 'edit' | 'delete'; name: string; avatarUrl?: string | null
@@ -60,6 +61,7 @@ export function PostCard({ post, authorName, avatarUrl, onSaved, onDeleted }: {
     {post.content && <div className="post-card-content"><p>{long && !expanded ? `${post.content.slice(0, 600)}…` : post.content}</p>{long && <button type="button" className="post-text-toggle" onClick={() => setExpanded(value => !value)}>{expanded ? 'Thu gọn' : 'Xem thêm'}</button>}</div>}
     <PostGallery postId={post.id} media={post.media} />
     {post.updatedAt !== post.createdAt && <p className="post-edited">Đã chỉnh sửa</p>}
+    <PostLikes key={`${post.id}:${session?.user.id}`} postId={post.id} />
     {dialog && <PostDialog post={post} mode={dialog} name={authorName} avatarUrl={avatarUrl} onClose={() => setDialog(null)} onSaved={onSaved} onDeleted={onDeleted} />}
   </article>
 }

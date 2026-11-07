@@ -1,13 +1,7 @@
 package com.chatsocial.service;
 
-import com.chatsocial.dto.post.CreatePostRequest;
-import com.chatsocial.dto.post.PostPageResponse;
-import com.chatsocial.dto.post.PostResponse;
-import com.chatsocial.dto.post.UpdatePostRequest;
-import com.chatsocial.entity.Post;
-import com.chatsocial.entity.PostMedia;
-import com.chatsocial.entity.UserProfile;
-import com.chatsocial.entity.User;
+import com.chatsocial.dto.post.*;
+import com.chatsocial.entity.*;
 import com.chatsocial.enums.PostPrivacy;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
@@ -291,6 +285,63 @@ public class PostService {
 
     private ApiException postNotFound() {
         return new ApiException(HttpStatus.NOT_FOUND, "Post not found");
+    }
+
+    @Transactional(readOnly = true)
+    public PostLikeResponse getLikeStatus(String currentUserId, String postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(this::postNotFound);
+
+        if (!canView(post, currentUserId)) {
+            throw postNotFound();
+        }
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    @Transactional
+    public PostLikeResponse likePost(String currentUserId, String postId) {
+        Post post = getVisiblePostForLike(currentUserId, postId);
+
+        boolean alreadyLiked = postLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
+
+        if (!alreadyLiked) {
+            User user = userRepository.findById(currentUserId)
+                    .filter(value -> value.getStatus() == UserStatus.ACTIVE)
+                    .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không còn hoạt động"));
+
+            postLikeRepository.save(new PostLike(post, user));
+        }
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    @Transactional
+    public PostLikeResponse unlikePost(String currentUserId, String postId) {
+        getVisiblePostForLike(currentUserId, postId);
+
+        postLikeRepository.deleteByPostAndUser(postId, currentUserId);
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    private Post getVisiblePostForLike(String currentUserId, String postId) {
+        Post post = postRepository.findForUpdateById(postId)
+                .orElseThrow(this::postNotFound);
+
+        if (!canView(post, currentUserId)) {
+            throw postNotFound();
+        }
+
+        return post;
+    }
+
+    private PostLikeResponse buildLikeResponse(String postId, String currentUserId) {
+        return new PostLikeResponse(
+                postId,
+                postLikeRepository.countByPostId(postId),
+                postLikeRepository.existsByPostIdAndUserId(postId, currentUserId)
+        );
     }
 
 }

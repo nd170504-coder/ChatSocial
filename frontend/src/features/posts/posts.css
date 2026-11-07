@@ -43,6 +43,16 @@
 .post-file-preview > .icon-button svg { width: 15px; height: 15px; }
 .post-file-preview > span { display: block; padding: 6px; font-size: 9px; color: #62748d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .post-card { margin-bottom: 18px; }
+.post-likes { padding: 10px 18px; border-top: 1px solid #edf0f6; }
+.post-likes-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.post-like-button { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; color: #74839a; font-size: 12px; font-weight: 600; }
+.post-like-button:hover:not(:disabled) { background: #f0f5ff; color: var(--primary); }
+.post-like-button.is-liked { color: var(--primary); background: #edf3ff; }
+.post-like-button:disabled { cursor: default; opacity: .65; }
+.post-like-button svg { width: 18px; height: 18px; }
+.post-like-count { font-size: 11px; color: #7b89a0; text-align: right; }
+.post-like-error { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; color: #ad3040; font-size: 11px; line-height: 1.7; }
+.post-like-error button { padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; }
 .post-card-header { padding: 22px 24px 16px; align-items: start; }
 .post-card-author { flex: 1; min-width: 0; padding-top: 2px; }
 .post-card-author > div { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: #8a98ac; font-size: 10px; margin-top: 7px; }

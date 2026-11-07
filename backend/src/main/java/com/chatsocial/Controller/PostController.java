@@ -1,10 +1,7 @@
 package com.chatsocial.Controller;
 
 import com.chatsocial.dto.ApiResponse;
-import com.chatsocial.dto.post.CreatePostRequest;
-import com.chatsocial.dto.post.PostResponse;
-import com.chatsocial.dto.post.PostPageResponse;
-import com.chatsocial.dto.post.UpdatePostRequest;
+import com.chatsocial.dto.post.*;
 import com.chatsocial.service.PostService;
 import com.chatsocial.service.SupabaseStorageService;
 import com.chatsocial.utils.SecurityUtils;
@@ -120,6 +117,30 @@ public class PostController {
         postService.deletePost(currentUserId, postId);
 
         return ResponseEntity.ok().body(ApiResponse.success("Post deleted successfully", null));
+    }
+
+    @GetMapping("/{postId}/likes")
+    @Operation(summary = "Lấy tổng lượt thích và trạng thái đã thích")
+    public ResponseEntity<ApiResponse<PostLikeResponse>> getLikeStatus(@PathVariable("postId") String postId) {
+        var response = postService.getLikeStatus(SecurityUtils.getCurrentUserId(), postId);
+
+        return ResponseEntity.ok(ApiResponse.success("Like status retrieved successfully", response));
+    }
+
+    @PutMapping("/{postId}/likes")
+    @Operation(summary = "Thích bài viết")
+    public ResponseEntity<ApiResponse<PostLikeResponse>> likePost(@PathVariable("postId") String postId) {
+        var response = postService.likePost(SecurityUtils.getCurrentUserId(), postId);
+
+        return ResponseEntity.ok(ApiResponse.success("Post liked successfully", response));
+    }
+
+    @DeleteMapping("/{postId}/likes")
+    @Operation(summary = "Bỏ thích bài viết")
+    public ResponseEntity<ApiResponse<PostLikeResponse>> unlikePost(@PathVariable("postId") String postId) {
+        var response = postService.unlikePost(SecurityUtils.getCurrentUserId(), postId);
+
+        return ResponseEntity.ok(ApiResponse.success("Post unliked successfully", response));
     }
 
 }

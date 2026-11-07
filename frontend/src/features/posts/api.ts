@@ -1,7 +1,16 @@
 import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
-import type { Post, PostPage, PostValues } from './types'
+import type { Post, PostLikeStatus, PostPage, PostValues } from './types'
 
 export const postApi = {
+  likes: (postId: string, signal?: AbortSignal) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { signal },
+  ),
+  like: (postId: string) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { method: 'PUT' },
+  ),
+  unlike: (postId: string) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { method: 'DELETE' },
+  ),
   feed: (page = 0, signal?: AbortSignal) => authenticatedRequest<PostPage>(
     `/post/feed?page=${page}&size=10`, { signal },
   ),
