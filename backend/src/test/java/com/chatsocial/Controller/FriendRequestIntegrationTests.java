@@ -3,6 +3,13 @@ package com.chatsocial.Controller;
 import com.chatsocial.entity.Friendship;
 import com.chatsocial.entity.User;
 import com.chatsocial.entity.UserProfile;
+import com.chatsocial.entity.FriendRequest;
+import com.chatsocial.entity.Post;
+import com.chatsocial.entity.PostMedia;
+import com.chatsocial.enums.PostPrivacy;
+import com.chatsocial.repository.PostRepository;
+import com.chatsocial.repository.PostMediaRepository;
+import com.chatsocial.service.SupabaseStorageService;
 import com.chatsocial.enums.FriendshipStatus;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.repository.FriendRequestRepository;
@@ -17,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -30,6 +38,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -41,7 +51,10 @@ class FriendRequestIntegrationTests {
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
     @Autowired UserProfileRepository profiles;
-    @Autowired FriendRequestRepository requests;
+    @MockitoSpyBean FriendRequestRepository requests;
+    @Autowired PostRepository posts;
+    @Autowired PostMediaRepository media;
+    @MockitoBean SupabaseStorageService storage;
     @Autowired FriendshipRepository friendships;
     @MockitoBean JavaMailSender mailSender;
     private final ObjectMapper json = new ObjectMapper();
@@ -54,6 +67,8 @@ class FriendRequestIntegrationTests {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         requests.deleteAll();
         friendships.deleteAll();
+        media.deleteAll();
+        posts.deleteAll();
         profiles.deleteAll();
         users.deleteAll();
         sender = users.saveAndFlush(new User(null, "sender@example.com", "hash", "sender", UserStatus.ACTIVE, null, null));
@@ -323,6 +338,140 @@ class FriendRequestIntegrationTests {
     }
 
     @Test
+    void acceptingCreatesFriendshipRemovesPendingListsAndUnlocksOnlyFriendsPostsAndMedia() throws Exception {
+        Post friendsPost = posts.saveAndFlush(Post.builder().user(sender).content("Friends only").privacy(PostPrivacy.FRIENDS).build());
+        Post privatePost = posts.saveAndFlush(Post.builder().user(sender).content("Private").privacy(PostPrivacy.PRIVATE).build());
+        PostMedia image = media.saveAndFlush(new PostMedia(friendsPost,
+                sender.getId() + "/posts/" + UUID.randomUUID() + ".png", 0));
+        String imageUrl = "/api/post/" + friendsPost.getId() + "/media/" + image.getId();
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        mvc.perform(get(imageUrl).with(jwt().jwt(token -> token.subject(recipient.getId())))).andExpect(status().isNotFound());
+        respond(recipient, id, "accept", 200);
+        assertEquals(FriendshipStatus.ACCEPTED, requests.findById(id).orElseThrow().getStatus());
+        assertEquals(1, friendships.count());
+        assertTrue(friendships.areFriends(sender.getId(), recipient.getId()));
+        assertTrue(friendships.areFriends(recipient.getId(), sender.getId()));
+        for (User actor : List.of(sender, recipient)) {
+            String target = actor.getId().equals(sender.getId()) ? recipient.getId() : sender.getId();
+            mvc.perform(get("/api/users/{id}/profile", target).with(jwt().jwt(token -> token.subject(actor.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("FRIENDS"))
+                    .andExpect(jsonPath("$.data.friendRequestId").doesNotExist());
+        }
+        mvc.perform(get("/api/friend-requests/incoming").with(jwt().jwt(token -> token.subject(recipient.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        mvc.perform(get("/api/friend-requests/outgoing").with(jwt().jwt(token -> token.subject(sender.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        mvc.perform(get("/api/users/{id}/posts", sender.getId()).with(jwt().jwt(token -> token.subject(recipient.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(friendsPost.getId()));
+        mvc.perform(get("/api/post/{id}", privatePost.getId()).with(jwt().jwt(token -> token.subject(recipient.getId()))))
+                .andExpect(status().isNotFound());
+        when(storage.downloadPostImage(anyString())).thenReturn(new SupabaseStorageService.DownloadedImage(new byte[]{1}, "image/png"));
+        mvc.perform(get(imageUrl).with(jwt().jwt(token -> token.subject(recipient.getId())))).andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectingKeepsUsersUnrelatedAndAllowsANewInvitation() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        respond(recipient, id, "reject", 200);
+        assertEquals(FriendshipStatus.REJECTED, requests.findById(id).orElseThrow().getStatus());
+        assertEquals(0, friendships.count());
+        mvc.perform(get("/api/users/{id}/profile", sender.getId()).with(jwt().jwt(token -> token.subject(recipient.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("NONE"));
+        mvc.perform(get("/api/friend-requests/incoming").with(jwt().jwt(token -> token.subject(recipient.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        assertEquals(id, send(sender, recipient.getId(), 201).get("id").asText());
+    }
+
+    @Test
+    void onlyTheAuthenticatedRecipientCanRespondToAPendingRequest() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        User stranger = users.saveAndFlush(new User(null, "stranger@example.com", "hash", "stranger", UserStatus.ACTIVE, null, null));
+        for (String action : List.of("accept", "reject")) {
+            mvc.perform(post("/api/friend-requests/{id}/{action}", id, action)).andExpect(status().isUnauthorized());
+            respond(sender, id, action, 404);
+            respond(stranger, id, action, 404);
+            respond(recipient, UUID.randomUUID().toString(), action, 404);
+        }
+        respond(recipient, id, "accept", 200);
+        respond(recipient, id, "accept", 409);
+        respond(recipient, id, "reject", 409);
+        assertEquals(1, friendships.count());
+        assertEquals(FriendshipStatus.ACCEPTED, requests.findById(id).orElseThrow().getStatus());
+    }
+
+    @Test
+    void inactiveAccountsCannotBecomeFriendsButRecipientCanRejectUnavailableSender() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        recipient.setStatus(UserStatus.DISABLED);
+        users.saveAndFlush(recipient);
+        respond(recipient, id, "accept", 401);
+        respond(recipient, id, "reject", 401);
+        recipient.setStatus(UserStatus.ACTIVE);
+        users.saveAndFlush(recipient);
+        sender.setStatus(UserStatus.DELETED);
+        users.saveAndFlush(sender);
+        respond(recipient, id, "accept", 404);
+        assertEquals(FriendshipStatus.PENDING, requests.findById(id).orElseThrow().getStatus());
+        respond(recipient, id, "reject", 200);
+        assertEquals(0, friendships.count());
+    }
+
+    @Test
+    void failedInvitationUpdateRollsBackFriendshipCreation() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        doThrow(new IllegalStateException("simulated response failure")).when(requests).saveAndFlush(any(FriendRequest.class));
+        respond(recipient, id, "accept", 500);
+        assertEquals(0, friendships.count());
+        assertEquals(FriendshipStatus.PENDING, requests.findById(id).orElseThrow().getStatus());
+    }
+
+    @Test
+    void concurrentAcceptsCreateOnlyOneFriendship() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        var pool = Executors.newFixedThreadPool(2);
+        var start = new CountDownLatch(1);
+        try {
+            java.util.concurrent.Callable<Integer> accept = () -> { start.await(); return responseStatus(recipient, id, "accept"); };
+            var first = pool.submit(accept);
+            var second = pool.submit(accept);
+            start.countDown();
+            var results = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertTrue(results.contains(200), results.toString());
+            assertTrue(results.contains(409), results.toString());
+            assertEquals(1, friendships.count());
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test
+    void concurrentAcceptAndCancelHaveConsistentOutcome() throws Exception {
+        String id = send(sender, recipient.getId(), 201).get("id").asText();
+        var pool = Executors.newFixedThreadPool(2);
+        var start = new CountDownLatch(1);
+        try {
+            var accepted = pool.submit(() -> { start.await(); return responseStatus(recipient, id, "accept"); });
+            var cancelled = pool.submit(() -> {
+                start.await();
+                return mvc.perform(delete("/api/friend-requests/{id}", id)
+                        .with(jwt().jwt(token -> token.subject(sender.getId())))).andReturn().getResponse().getStatus();
+            });
+            start.countDown();
+            int acceptStatus = accepted.get(10, TimeUnit.SECONDS);
+            int cancelStatus = cancelled.get(10, TimeUnit.SECONDS);
+            if (acceptStatus == 200) {
+                assertEquals(409, cancelStatus);
+                assertEquals(1, friendships.count());
+                assertEquals(FriendshipStatus.ACCEPTED, requests.findById(id).orElseThrow().getStatus());
+            } else {
+                assertEquals(404, acceptStatus);
+                assertEquals(200, cancelStatus);
+                assertEquals(0, friendships.count());
+                assertFalse(requests.existsById(id));
+            }
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test
     void concurrentDuplicateSubmissionsProduceOnePendingRequest() throws Exception {
         assertConcurrentSend(false);
     }
@@ -356,6 +505,16 @@ class FriendRequestIntegrationTests {
                         .content(json.writeValueAsString(java.util.Map.of("userId", targetId)))
                         .with(jwt().jwt(token -> token.subject(actor.getId()))))
                 .andReturn().getResponse().getStatus();
+    }
+
+    private int responseStatus(User actor, String id, String action) throws Exception {
+        return mvc.perform(post("/api/friend-requests/{id}/{action}", id, action)
+                        .with(jwt().jwt(token -> token.subject(actor.getId()))))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private void respond(User actor, String id, String action, int expectedStatus) throws Exception {
+        assertEquals(expectedStatus, responseStatus(actor, id, action));
     }
 
     private void cancel(User actor, String requestId, int expectedStatus) throws Exception {

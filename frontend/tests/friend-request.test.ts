@@ -16,11 +16,10 @@ it('only shows the send button when no friendship or pending invitation exists',
   expect(render('NONE')).toContain('Kết bạn')
   expect(render('OUTGOING_PENDING')).toContain('Đã gửi lời mời')
   expect(render('OUTGOING_PENDING')).toContain('Hủy lời mời')
-  for (const [state, label] of [['INCOMING_PENDING', 'Đã nhận lời mời'], ['FRIENDS', 'Bạn bè']] as const) {
-    const markup = render(state)
-    expect(markup).toContain(label)
-    expect(markup).not.toContain('<button')
-  }
+  expect(render('INCOMING_PENDING')).toContain('Chấp nhận')
+  expect(render('INCOMING_PENDING')).toContain('Từ chối')
+  expect(render('FRIENDS')).toContain('Bạn bè')
+  expect(render('FRIENDS')).not.toContain('<button')
   expect(render('SELF')).toBe('')
 })
 
@@ -48,6 +47,15 @@ it('sends only the recipient userId using the logged-in token', async () => {
   expect(cancelOptions?.method).toBe('DELETE')
   expect(cancelOptions?.body).toBeUndefined()
   expect(new Headers(cancelOptions?.headers).get('Authorization')).toBe('Bearer access')
+  for (const action of ['accept', 'reject'] as const) {
+    fetchMock.mockResolvedValueOnce(response({ id: 'invitation', status: action === 'accept' ? 'ACCEPTED' : 'REJECTED' }))
+    await friendRequestApi[action]('invitation')
+    const [actionUrl, actionOptions] = fetchMock.mock.calls.at(-1)!
+    expect(String(actionUrl)).toMatch(new RegExp(`/api/friend-requests/invitation/${action}$`))
+    expect(actionOptions?.method).toBe('POST')
+    expect(actionOptions?.body).toBeUndefined()
+    expect(new Headers(actionOptions?.headers).get('Authorization')).toBe('Bearer access')
+  }
 })
 
 it('loads the incoming/outgoing pages with authentication, pagination and cancellation signals', async () => {

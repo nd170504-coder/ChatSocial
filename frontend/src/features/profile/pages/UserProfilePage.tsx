@@ -54,6 +54,6 @@ function UserProfileContent({ userId, onRefresh }: { userId: string; onRefresh: 
     </section>
     <section id="about" className="profile-card"><div className="profile-card-heading"><h2>Giới thiệu</h2></div><p className="profile-bio">{profile.bio || 'Người dùng chưa thêm lời giới thiệu.'}</p></section>
     <p className="visitor-visibility-note">{profile.relationship === 'FRIENDS' ? 'Bạn có thể xem bài công khai và bài dành cho bạn bè.' : 'Bạn đang xem các bài viết công khai.'}</p>
-    <PostSection userId={profile.userId} name={profile.fullName} avatarUrl={profile.avatarUrl} readOnly />
+    <PostSection key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} name={profile.fullName} avatarUrl={profile.avatarUrl} readOnly />
   </main>
 }

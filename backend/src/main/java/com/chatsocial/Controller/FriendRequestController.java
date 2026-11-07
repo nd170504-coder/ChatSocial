@@ -22,6 +22,20 @@ import org.springframework.web.bind.annotation.*;
 public class FriendRequestController {
     private final FriendRequestService requests;
 
+    @PostMapping("/{requestId}/accept")
+    @Operation(summary = "Chấp nhận lời mời kết bạn", description = "Chỉ người nhận được chấp nhận lời mời PENDING; tạo quan hệ bạn bè trong cùng transaction.")
+    public ResponseEntity<ApiResponse<FriendRequestResponse>> accept(@PathVariable("requestId") String requestId) {
+        return ResponseEntity.ok(ApiResponse.success("Friend request accepted successfully",
+                requests.respond(SecurityUtils.getCurrentUserId(), requestId, true)));
+    }
+
+    @PostMapping("/{requestId}/reject")
+    @Operation(summary = "Từ chối lời mời kết bạn", description = "Chỉ người nhận được từ chối lời mời PENDING.")
+    public ResponseEntity<ApiResponse<FriendRequestResponse>> reject(@PathVariable("requestId") String requestId) {
+        return ResponseEntity.ok(ApiResponse.success("Friend request rejected successfully",
+                requests.respond(SecurityUtils.getCurrentUserId(), requestId, false)));
+    }
+
     @GetMapping("/incoming")
     @Operation(summary = "Lời mời kết bạn đã nhận", description = "Chỉ lời mời PENDING của tài khoản đang đăng nhập, mới nhất trước.")
     public ResponseEntity<ApiResponse<FriendRequestPageResponse>> incoming(

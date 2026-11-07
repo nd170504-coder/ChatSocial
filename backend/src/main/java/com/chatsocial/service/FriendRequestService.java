@@ -8,6 +8,7 @@ import com.chatsocial.dto.user.UserSearchItem;
 import com.chatsocial.entity.UserProfile;
 import com.chatsocial.entity.FriendRequest;
 import com.chatsocial.entity.User;
+import com.chatsocial.entity.Friendship;
 import com.chatsocial.enums.FriendshipStatus;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
@@ -95,18 +96,7 @@ public class FriendRequestService {
 
     @Transactional
     public void cancel(String requesterId, String requestId) {
-        // Read only the stable pair key before locking, so a waiting request cannot use stale entity state.
-        String pairKey = requests.findPairKeyById(requestId).orElseThrow(this::requestNotFound);
-        String[] pair = pairKey.split(":");
-        if (!requesterId.equals(pair[0]) && !requesterId.equals(pair[1])) throw requestNotFound();
-        for (String userId : pair) {
-            User user = users.findForUpdateById(userId).orElseThrow(this::requestNotFound);
-            // The sender can withdraw an invitation even if its recipient is no longer active.
-            if (userId.equals(requesterId) && user.getStatus() != UserStatus.ACTIVE) {
-                throw new ApiException(HttpStatus.UNAUTHORIZED, "User is unavailable");
-            }
-        }
-        FriendRequest request = requests.findById(requestId).orElseThrow(this::requestNotFound);
+        FriendRequest request = lockedRequest(requesterId, requestId, false);
         if (!request.getRequester().getId().equals(requesterId)) throw requestNotFound();
         if (request.getStatus() != FriendshipStatus.PENDING
                 || friendships.areFriends(requesterId, request.getAddressee().getId())) {
@@ -115,6 +105,38 @@ public class FriendRequestService {
         // Cancelling removes only a pending invitation; it never removes a friendship.
         requests.delete(request);
         requests.flush();
+    }
+
+    @Transactional
+    public FriendRequestResponse respond(String recipientId, String requestId, boolean accept) {
+        FriendRequest request = lockedRequest(recipientId, requestId, accept);
+        if (!request.getAddressee().getId().equals(recipientId)) throw requestNotFound();
+        if (request.getStatus() != FriendshipStatus.PENDING
+                || friendships.areFriends(recipientId, request.getRequester().getId())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Friend request has already been processed");
+        }
+        if (accept) {
+            friendships.saveAndFlush(new Friendship(request.getRequester(), request.getAddressee()));
+        }
+        request.setStatus(accept ? FriendshipStatus.ACCEPTED : FriendshipStatus.REJECTED);
+        return FriendRequestResponse.from(requests.saveAndFlush(request));
+    }
+
+    private FriendRequest lockedRequest(String actorId, String requestId, boolean requireActiveOther) {
+        // Read only the stable pair key before locking, so a waiting request cannot use stale entity state.
+        String pairKey = requests.findPairKeyById(requestId).orElseThrow(this::requestNotFound);
+        String[] pair = pairKey.split(":");
+        if (!actorId.equals(pair[0]) && !actorId.equals(pair[1])) throw requestNotFound();
+        for (String userId : pair) {
+            User user = users.findForUpdateById(userId).orElseThrow(this::requestNotFound);
+            if (userId.equals(actorId) && user.getStatus() != UserStatus.ACTIVE) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "User is unavailable");
+            }
+            if (!userId.equals(actorId) && requireActiveOther && user.getStatus() != UserStatus.ACTIVE) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "User is unavailable");
+            }
+        }
+        return requests.findById(requestId).orElseThrow(this::requestNotFound);
     }
 
     private ApiException requestNotFound() {

@@ -2,6 +2,8 @@ import { authenticatedRequest } from '../auth/session'
 import type { FriendRequest, FriendRequestDirection, FriendRequestPage, UserSearchPage } from './types'
 
 export const friendRequestApi = {
+  accept: (requestId: string) => authenticatedRequest<FriendRequest>(`/friend-requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' }),
+  reject: (requestId: string) => authenticatedRequest<FriendRequest>(`/friend-requests/${encodeURIComponent(requestId)}/reject`, { method: 'POST' }),
   list: (direction: FriendRequestDirection, page = 0, signal?: AbortSignal) => authenticatedRequest<FriendRequestPage>(
     `/friend-requests/${direction}?page=${page}&size=12`, { signal },
   ),
