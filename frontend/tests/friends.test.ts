@@ -55,4 +55,11 @@ it('uses the implemented friends list and per-user count contracts with authenti
   expect(String(countUrl)).toMatch(/\/api\/users\/friend-id\/friends\/count$/)
   expect(new Headers(countOptions?.headers).get('Authorization')).toBe('Bearer access')
   expect(countOptions?.signal).toBe(controller.signal)
+  fetchMock.mockResolvedValueOnce(response(null))
+  await friendsApi.unfriend('friend/id')
+  const [deleteUrl, deleteOptions] = fetchMock.mock.calls[3]
+  expect(String(deleteUrl)).toMatch(/\/api\/friends\/friend%2Fid$/)
+  expect(deleteOptions?.method).toBe('DELETE')
+  expect(deleteOptions?.body).toBeUndefined()
+  expect(new Headers(deleteOptions?.headers).get('Authorization')).toBe('Bearer access')
 })

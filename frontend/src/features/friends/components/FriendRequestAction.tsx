@@ -5,6 +5,7 @@ import { profileApi } from '../../profile/api'
 import type { UserProfile } from '../../profile/types'
 import { friendRequestApi } from '../api'
 import { friendRequestError, relationshipLabels } from '../utils'
+import { UnfriendButton } from './UnfriendButton'
 import '../friends.css'
 
 export function FriendRequestAction({ profile, onUpdated, onBusyChange }: {
@@ -69,6 +70,9 @@ export function FriendRequestAction({ profile, onUpdated, onBusyChange }: {
       ? <button type="button" className="button button-primary visitor-add-friend" disabled={busy} onClick={() => void mutate('send')}><Icon name="user" />{busy ? 'Đang gửi…' : 'Kết bạn'}</button>
       : <span className={`visitor-relationship ${profile.relationship === 'FRIENDS' ? 'is-friend' : ''}`}><Icon name={profile.relationship === 'INCOMING_PENDING' ? 'mail' : 'check'} width="15" height="15" />{relationshipLabels[profile.relationship]}</span>}
     {profile.relationship === 'OUTGOING_PENDING' && <button type="button" className="button button-secondary visitor-cancel-friend" disabled={busy} onClick={() => void mutate('cancel')}><Icon name="close" width="15" height="15" />{busy ? 'Đang hủy…' : 'Hủy lời mời'}</button>}
+    {profile.relationship === 'FRIENDS' && <UnfriendButton userId={profile.userId} fullName={profile.fullName}
+      onBusyChange={value => { setBusy(value); onBusyChange(value) }}
+      onRemoved={updated => { setBusy(false); onBusyChange(false); onUpdated(updated || { ...profile, relationship: 'NONE', friendRequestId: null }); setNotice('Đã cập nhật quan hệ. Bạn chỉ xem được bài công khai của người này.'); setError('') }} />}
     {profile.relationship === 'INCOMING_PENDING' && <div className="friend-response-buttons"><button type="button" className="button button-primary" disabled={busy} onClick={() => void mutate('accept')}>{busy ? 'Đang xử lý…' : 'Chấp nhận'}</button><button type="button" className="button button-secondary" disabled={busy} onClick={() => void mutate('reject')}>Từ chối</button></div>}
     {notice && <span className="friend-action-notice" role="status">{notice}</span>}
     {error && <span className="friend-action-error" role="alert">{error}</span>}

@@ -19,7 +19,8 @@ it('only shows the send button when no friendship or pending invitation exists',
   expect(render('INCOMING_PENDING')).toContain('Chấp nhận')
   expect(render('INCOMING_PENDING')).toContain('Từ chối')
   expect(render('FRIENDS')).toContain('Bạn bè')
-  expect(render('FRIENDS')).not.toContain('<button')
+  expect(render('FRIENDS')).toContain('Hủy kết bạn')
+  expect(render('NONE')).not.toContain('Hủy kết bạn')
   expect(render('SELF')).toBe('')
 })
 

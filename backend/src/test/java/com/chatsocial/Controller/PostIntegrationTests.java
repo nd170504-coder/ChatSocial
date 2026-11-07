@@ -214,6 +214,54 @@ class PostIntegrationTests {
     }
 
     @Test
+    void unfriendingRevokesFriendsPostsMediaAndInteractionsInBothDirections() throws Exception {
+        JsonNode friendPost = create("{\"content\":\"Friends A\",\"privacy\":\"FRIENDS\"}", image());
+        String friendId = friendPost.get("id").asText();
+        String mediaUrl = friendPost.get("media").get(0).get("url").asText();
+        String publicId = create("{\"content\":\"Public A\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        User viewer = user("viewer");
+        User stranger = user("stranger");
+        Post otherPost = posts.saveAndFlush(Post.builder().user(viewer).content("Friends B").privacy(PostPrivacy.FRIENDS).build());
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        when(storage.downloadPostImage(anyString()))
+                .thenReturn(new SupabaseStorageService.DownloadedImage(PNG, "image/png"));
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk());
+        mvc.perform(delete("/api/friends/{id}", viewer.getId())).andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/friends/{id}", author.getId()).with(jwt().jwt(token -> token.subject(stranger.getId()))))
+                .andExpect(status().isNotFound());
+        assertTrue(friendships.areFriends(author.getId(), viewer.getId()));
+        mvc.perform(delete("/api/friends/{id}", author.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/friends/{id}", viewer.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk());
+        assertFalse(friendships.areFriends(author.getId(), viewer.getId()));
+        mvc.perform(get("/api/users/{id}/profile", author.getId()).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("NONE"));
+        mvc.perform(get("/api/friends").with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        for (User participant : java.util.List.of(author, viewer)) {
+            String hiddenId = participant.getId().equals(author.getId()) ? otherPost.getId() : friendId;
+            for (String suffix : new String[]{"", "/likes", "/comments", "/comments/count"}) {
+                mvc.perform(get("/api/post/" + hiddenId + suffix).with(jwt().jwt(token -> token.subject(participant.getId()))))
+                        .andExpect(status().isNotFound());
+            }
+            mvc.perform(get("/api/users/{id}/friends/count", participant.getId())
+                            .with(jwt().jwt(token -> token.subject(participant.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.friendCount").value(0));
+            mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(participant.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[?(@.privacy == 'FRIENDS')]").isEmpty());
+        }
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/users/{id}/posts", author.getId()).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(publicId));
+        mvc.perform(delete("/api/friends/{id}", viewer.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void commentsSupportPaginationCountsAndOnlyOwnerDeletion() throws Exception {
         String id = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
         String url = "/api/post/" + id + "/comments";

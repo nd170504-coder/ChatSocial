@@ -2,6 +2,7 @@ import { authenticatedRequest } from '../auth/session'
 import type { FriendCount, FriendPage, FriendRequest, FriendRequestDirection, FriendRequestPage, UserSearchPage } from './types'
 
 export const friendsApi = {
+  unfriend: (userId: string) => authenticatedRequest<null>(`/friends/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   list: (page = 0, signal?: AbortSignal) => authenticatedRequest<FriendPage>(`/friends?page=${page}&size=12`, { signal }),
   count: (userId: string, signal?: AbortSignal) => authenticatedRequest<FriendCount>(
     `/users/${encodeURIComponent(userId)}/friends/count`, { signal },

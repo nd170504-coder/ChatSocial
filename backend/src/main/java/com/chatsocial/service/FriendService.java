@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -79,6 +80,32 @@ public class FriendService {
 
         long count = friendshipRepository.countActiveFriends(userId, UserStatus.ACTIVE);
         return new FriendCountResponse(userId, count);
+    }
+
+    @Transactional
+    public void unfriend(String currentUserId, String otherUserId) {
+        if (currentUserId.equals(otherUserId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể hủy kết bạn với chính mình");
+        }
+
+        var userIds = Stream.of(currentUserId, otherUserId)
+                .sorted()
+                .toList();
+
+        for (String userId : userIds) {
+            User user = userRepository.findForUpdateById(userId)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
+
+            if (userId.equals(currentUserId) && user.getStatus() != UserStatus.ACTIVE) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "Tài khoản không còn hoạt động");
+            }
+        }
+
+        int deleted = friendshipRepository.deleteFriendship(currentUserId, otherUserId);
+
+        if (deleted == 0) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Hai người hiện không phải bạn bè");
+        }
     }
 
 }
