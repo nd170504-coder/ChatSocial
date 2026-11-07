@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router'
 import { Icon } from '../../../components/ui/Icon'
 import { PostSection } from '../../posts/components/PostSection'
+import { FriendCount } from '../../friends/components/FriendCount'
 import { useAuth } from '../../auth/hooks/useAuth'
 import { Avatar } from '../components/Avatar'
 import { ImageUploadDialog } from '../components/ImageUploadDialog'
@@ -36,7 +37,7 @@ export function ProfilePage({ editing = false }: { editing?: boolean }) {
       </div>
       <div className="profile-identity">
         <div className="avatar-editor"><Avatar name={profile.fullName} src={profile.avatarUrl} /><button type="button" className="avatar-change-button" aria-label="Thay ảnh đại diện" onClick={() => setUploadType('avatar')}><Icon name="camera" /></button></div>
-        <div className="identity-text"><h2>{profile.fullName}</h2><p>@{session!.user.username}</p></div>
+        <div className="identity-text"><h2>{profile.fullName}</h2><p>@{session!.user.username}</p>{!editing && <FriendCount key={profile.userId} userId={profile.userId} linkToList />}</div>
         {!editing && <Link className="button button-secondary profile-edit-button" to="/profile/edit"><Icon name="edit" />Chỉnh sửa hồ sơ</Link>}
       </div>
       {!editing && <nav className="profile-section-nav" aria-label="Nội dung trang cá nhân"><a href="#posts"><Icon name="edit" />Bài viết</a><a href="#about"><Icon name="user" />Giới thiệu</a></nav>}

@@ -11,7 +11,7 @@ export function AppLayout() {
     <aside className="app-sidebar">
       <NavLink className="brand" to="/feed"><img src="/chatsocial.svg" alt="" width="40" height="40" />ChatSocial<span className="brand-dot">.</span></NavLink>
       <div className="sidebar-section-label">BẠN BÈ</div>
-      <nav className="friends-navigation" aria-label="Bạn bè"><NavLink className="sidebar-link" to="/friends/search"><Icon name="search" />Tìm bạn</NavLink><NavLink className="sidebar-link" to="/friends/requests"><Icon name="mail" />Lời mời</NavLink></nav>
+      <nav className="friends-navigation" aria-label="Bạn bè"><NavLink className="sidebar-link" to="/friends" end><Icon name="user" />Bạn bè</NavLink><NavLink className="sidebar-link" to="/friends/search"><Icon name="search" />Tìm bạn</NavLink><NavLink className="sidebar-link" to="/friends/requests"><Icon name="mail" />Lời mời</NavLink></nav>
     </aside>
     <div className="app-workspace">
       <header className="workspace-header"><nav className="workspace-nav" aria-label="Điều hướng chính"><NavLink to="/feed"><Icon name="shield" />Công khai</NavLink><NavLink to="/profile"><Icon name="user" />Hồ sơ</NavLink></nav><AccountDropdown avatarUrl={profileState.profile?.avatarUrl} /></header>

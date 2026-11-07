@@ -1,5 +1,12 @@
 import { authenticatedRequest } from '../auth/session'
-import type { FriendRequest, FriendRequestDirection, FriendRequestPage, UserSearchPage } from './types'
+import type { FriendCount, FriendPage, FriendRequest, FriendRequestDirection, FriendRequestPage, UserSearchPage } from './types'
+
+export const friendsApi = {
+  list: (page = 0, signal?: AbortSignal) => authenticatedRequest<FriendPage>(`/friends?page=${page}&size=12`, { signal }),
+  count: (userId: string, signal?: AbortSignal) => authenticatedRequest<FriendCount>(
+    `/users/${encodeURIComponent(userId)}/friends/count`, { signal },
+  ),
+}
 
 export const friendRequestApi = {
   accept: (requestId: string) => authenticatedRequest<FriendRequest>(`/friend-requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' }),

@@ -1,16 +1,13 @@
 package com.chatsocial.Controller;
 
 import com.chatsocial.dto.ApiResponse;
+import com.chatsocial.dto.friend.FriendCountResponse;
 import com.chatsocial.dto.post.PostPageResponse;
 import com.chatsocial.dto.user.AccountActionRequest;
 import com.chatsocial.dto.user.UserResponse;
 import com.chatsocial.dto.user.UserSearchResponse;
-import com.chatsocial.service.UserSearchService;
-import com.chatsocial.service.UserProfileService;
+import com.chatsocial.service.*;
 import com.chatsocial.dto.profile.UserProfileResponse;
-import com.chatsocial.service.AccountService;
-import com.chatsocial.service.AuthService;
-import com.chatsocial.service.PostService;
 import com.chatsocial.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +28,7 @@ public class UserController {
     private final PostService postService;
     private final UserSearchService userSearchService;
     private final UserProfileService userProfileService;
+    private final FriendService friendService;
 
     @GetMapping("/{userId}/profile")
     @Operation(summary = "Xem hồ sơ người dùng", description = "Thông tin cơ bản và quan hệ SELF/FRIENDS/NONE/OUTGOING_PENDING/INCOMING_PENDING. Không trả email, ngày sinh hoặc giới tính.")
@@ -87,5 +85,13 @@ public class UserController {
 
         return ResponseEntity.ok().body(ApiResponse.success("Posts retrieved successfully", response));
     }
+
+    @GetMapping("/{userId}/friends/count")
+    @Operation(summary = "Đếm số bạn bè của người dùng")
+    public ResponseEntity<ApiResponse<FriendCountResponse>> countFriends(@PathVariable("userId") String userId) {
+        FriendCountResponse response = friendService.countFriends(userId);
+        return ResponseEntity.ok(ApiResponse.success("Friend count retrieved successfully", response));
+    }
+
 
 }

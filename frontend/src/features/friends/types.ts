@@ -5,6 +5,25 @@ export interface UserSearchItem {
   avatarUrl: string | null
 }
 
+export interface Friend {
+  userId: string
+  username: string
+  fullName: string
+  avatarUrl: string | null
+}
+
+export interface FriendPage {
+  items: Friend[]
+  page: number
+  size: number
+  hasNext: boolean
+}
+
+export interface FriendCount {
+  userId: string
+  friendCount: number
+}
+
 export interface UserSearchPage {
   items: UserSearchItem[]
   page: number

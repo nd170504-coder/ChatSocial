@@ -14,6 +14,7 @@ import { PublicPostsPage } from '../features/posts/pages/PublicPostsPage'
 import { FindFriendsPage } from '../features/friends/pages/FindFriendsPage'
 import { UserProfilePage } from '../features/profile/pages/UserProfilePage'
 import { FriendRequestsPage } from '../features/friends/pages/FriendRequestsPage'
+import { FriendsPage } from '../features/friends/pages/FriendsPage'
 
 export function AppRouter() {
   return <Routes>
@@ -31,6 +32,7 @@ export function AppRouter() {
         <Route path="/" element={<Navigate to="/feed" replace />} />
         <Route path="/feed" element={<PublicPostsPage />} />
         <Route path="/friends/search" element={<FindFriendsPage />} />
+        <Route path="/friends" element={<FriendsPage />} />
         <Route path="/friends/requests" element={<FriendRequestsPage />} />
         <Route path="/users/:userId" element={<UserProfilePage />} />
         <Route path="/profile" element={<ProfilePage />} />
