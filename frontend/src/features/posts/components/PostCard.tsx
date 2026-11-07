@@ -7,7 +7,7 @@ import { postApi } from '../api'
 import type { Post } from '../types'
 import { postError, postTime, privacyLabels } from '../utils'
 import { PostEditor } from './PostEditor'
-import { PostImage } from './PostImage'
+import { PostGallery } from './PostGallery'
 
 function PostDialog({ post, mode, name, avatarUrl, onClose, onSaved, onDeleted }: {
   post: Post; mode: 'edit' | 'delete'; name: string; avatarUrl?: string | null
@@ -52,14 +52,13 @@ export function PostCard({ post, authorName, avatarUrl, onSaved, onDeleted }: {
   const profilePath = own ? '/profile' : `/users/${encodeURIComponent(post.userId)}`
   const [expanded, setExpanded] = useState(false)
   const long = (post.content?.length || 0) > 600
-  const images = [...post.media].filter(media => media.mediaType === 'IMAGE').sort((a, b) => a.displayOrder - b.displayOrder)
 
   return <article className="post-card">
     <header className="post-card-header"><Link className="post-author-avatar" to={profilePath} aria-label={`Xem hồ sơ của ${authorName}`}><Avatar name={authorName} src={avatarUrl} className="post-avatar" /></Link><div className="post-card-author"><strong><Link className="post-author-name" to={profilePath}>{authorName}</Link></strong><div><Link to={`/posts/${post.id}`} aria-label="Xem chi tiết bài viết"><time dateTime={post.createdAt}>{postTime(post.createdAt)}</time></Link><span aria-hidden="true">·</span><span title={privacyLabels[post.privacy]}><Icon name={post.privacy === 'PRIVATE' ? 'lock' : 'shield'} width="12" height="12" />{privacyLabels[post.privacy]}</span></div></div>
       {own && <div className="post-card-tools"><button type="button" className="icon-button" aria-label="Chỉnh sửa bài viết" onClick={() => setDialog('edit')}><Icon name="edit" width="16" height="16" /></button><button type="button" className="icon-button" aria-label="Xóa bài viết" onClick={() => setDialog('delete')}><Icon name="trash" width="16" height="16" /></button></div>}
     </header>
     {post.content && <div className="post-card-content"><p>{long && !expanded ? `${post.content.slice(0, 600)}…` : post.content}</p>{long && <button type="button" className="post-text-toggle" onClick={() => setExpanded(value => !value)}>{expanded ? 'Thu gọn' : 'Xem thêm'}</button>}</div>}
-    {images.length > 0 && <div className={`post-media-grid post-media-${images.length}`}>{images.map((media, index) => <PostImage key={media.id} postId={post.id} mediaId={media.id} index={index} />)}</div>}
+    <PostGallery postId={post.id} media={post.media} />
     {post.updatedAt !== post.createdAt && <p className="post-edited">Đã chỉnh sửa</p>}
     {dialog && <PostDialog post={post} mode={dialog} name={authorName} avatarUrl={avatarUrl} onClose={() => setDialog(null)} onSaved={onSaved} onDeleted={onDeleted} />}
   </article>

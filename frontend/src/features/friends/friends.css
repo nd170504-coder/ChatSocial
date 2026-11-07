@@ -76,7 +76,7 @@
   .visitor-friend-action .visitor-relationship { margin-left: 0; justify-content: center; }
   .friend-action-notice, .friend-action-error { text-align: center; }
   .app-shell > .app-sidebar { flex-direction: row; flex-wrap: wrap; }
-  .app-sidebar .friends-navigation { display: flex; gap: 8px; flex-basis: 100%; }
+  .app-sidebar .friends-navigation { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
   .friend-requests-page .profile-page-heading { flex-wrap: wrap; }
   .friend-request-card { flex-wrap: wrap; padding: 18px; }
   .friend-request-actions { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }

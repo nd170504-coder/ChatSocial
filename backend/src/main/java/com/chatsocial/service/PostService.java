@@ -210,6 +210,19 @@ public class PostService {
     }
 
     @Transactional(readOnly = true)
+    public PostPageResponse getFeed(String viewerId, int page, int size) {
+        if (page < 0 || size < 1 || size > 50) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên và size phải từ 1 đến 50");
+        }
+        PageRequest pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        Slice<Post> posts = postRepository.findFeed(viewerId, UserStatus.ACTIVE,
+                PostPrivacy.PUBLIC, PostPrivacy.FRIENDS, pageable);
+        return new PostPageResponse(toResponses(posts.getContent()), posts.getNumber(),
+                posts.getSize(), posts.hasNext());
+    }
+
+    @Transactional(readOnly = true)
     public PostPageResponse getPublicPosts(int page, int size) {
         if (page < 0 || size < 1 || size > 50) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên và size phải từ 1 đến 50");

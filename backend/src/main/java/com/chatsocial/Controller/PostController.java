@@ -32,6 +32,15 @@ public class PostController {
     private final PostService postService;
     private final SupabaseStorageService storage;
 
+    @GetMapping("/feed")
+    @Operation(summary = "Lấy bảng tin", description = "Bài PUBLIC và bài FRIENDS của bạn bè đang hoạt động; loại bài của chính mình, mới nhất trước.")
+    public ResponseEntity<ApiResponse<PostPageResponse>> getFeed(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success("Feed retrieved successfully",
+                postService.getFeed(SecurityUtils.getCurrentUserId(), page, size)));
+    }
+
     @GetMapping("/public")
     @Operation(summary = "Lấy bài viết công khai", description = "Bài PUBLIC của tài khoản đang hoạt động, mới nhất trước.")
     public ResponseEntity<ApiResponse<PostPageResponse>> getPublicPosts(

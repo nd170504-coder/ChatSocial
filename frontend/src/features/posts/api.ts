@@ -2,8 +2,8 @@ import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
 import type { Post, PostPage, PostValues } from './types'
 
 export const postApi = {
-  publicList: (page = 0, signal?: AbortSignal) => authenticatedRequest<PostPage>(
-    `/post/public?page=${page}&size=10`, { signal },
+  feed: (page = 0, signal?: AbortSignal) => authenticatedRequest<PostPage>(
+    `/post/feed?page=${page}&size=10`, { signal },
   ),
   list: (userId: string, page = 0, signal?: AbortSignal) => authenticatedRequest<PostPage>(
     `/users/${encodeURIComponent(userId)}/posts?page=${page}&size=10`, { signal },
