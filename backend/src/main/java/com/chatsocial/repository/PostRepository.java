@@ -19,6 +19,23 @@ public interface PostRepository extends JpaRepository<Post, String> {
 
     @Query("""
             select p from Post p join fetch p.user author
+            where author.id <> :viewerId
+              and author.status = :activeStatus
+              and (p.privacy = :publicPrivacy or (
+                  p.privacy = :friendsPrivacy and exists (
+                      select f.id from Friendship f
+                      where (f.user.id = :viewerId and f.friend.id = author.id)
+                         or (f.friend.id = :viewerId and f.user.id = author.id)
+                  )
+              ))
+            """)
+    Slice<Post> findFeed(@Param("viewerId") String viewerId,
+                         @Param("activeStatus") UserStatus activeStatus,
+                         @Param("publicPrivacy") PostPrivacy publicPrivacy,
+                         @Param("friendsPrivacy") PostPrivacy friendsPrivacy, Pageable pageable);
+
+    @Query("""
+            select p from Post p join fetch p.user author
             where p.privacy = :privacy and author.status = :status
             """)
     Slice<Post> findPublicPosts(@Param("privacy") PostPrivacy privacy,

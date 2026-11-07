@@ -6,7 +6,7 @@ import { useAuth } from '../features/auth/hooks/useAuth'
 import { useAuthForm } from '../features/auth/hooks/useAuthForm'
 import { authStore } from '../features/auth/session'
 
-export function AccountDropdown({ avatarUrl }: { avatarUrl?: string | null }) {
+export function AccountDropdown({ avatarUrl, fullName }: { avatarUrl?: string | null; fullName?: string | null }) {
   const { session } = useAuth()
   const form = useAuthForm()
   const navigate = useNavigate()
@@ -40,16 +40,17 @@ export function AccountDropdown({ avatarUrl }: { avatarUrl?: string | null }) {
 
   if (!session) return null
   const user = session.user
+  const displayName = fullName || user.fullName
   return <div className="account-dropdown" ref={wrapper} onBlur={event => {
     if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) setOpenAt(null)
   }}>
     <button ref={trigger} className="account-trigger" type="button" aria-label="Mở tùy chọn tài khoản"
       aria-expanded={open} aria-controls={panelId} onClick={() => setOpenAt(open ? null : location.key)}>
-      <Avatar name={user.fullName} src={avatarUrl} className="account-avatar" />
-      <span className="account-trigger-chevron" aria-hidden="true">⌄</span>
+      <Avatar name={displayName} src={avatarUrl} className="account-avatar" />
+      <span className="account-trigger-name">{displayName}</span>
     </button>
     {open && <div ref={panel} id={panelId} className="account-panel">
-      <div className="account-panel-identity"><Avatar name={user.fullName} src={avatarUrl} className="account-avatar" /><div><strong>{user.fullName}</strong><span>@{user.username}</span></div></div>
+      <div className="account-panel-identity"><Avatar name={displayName} src={avatarUrl} className="account-avatar" /><div><strong>{displayName}</strong><span>@{user.username}</span></div></div>
       <p className="account-status"><span className="status-dot" aria-hidden="true" />Đã đăng nhập</p>
       <nav aria-label="Tùy chọn tài khoản">
         <Link className="account-action" to="/profile" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="user" />Hồ sơ của tôi</Link>

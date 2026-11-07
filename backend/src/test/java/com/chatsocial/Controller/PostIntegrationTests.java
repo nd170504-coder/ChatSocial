@@ -143,6 +143,90 @@ class PostIntegrationTests {
     }
 
     @Test
+    void feedExcludesOwnPostsAndFiltersPrivacyBeforePagination() throws Exception {
+        profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", null, null, null, null));
+        String publicId = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        JsonNode friendPost = create("{\"content\":\"Friends\",\"privacy\":\"FRIENDS\"}", image());
+        create("{\"content\":\"Private\",\"privacy\":\"PRIVATE\"}");
+        User viewer = user("viewer");
+        User stranger = user("stranger");
+        User secondFriend = user("secondFriend");
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        friendships.saveAndFlush(new Friendship(secondFriend, viewer));
+        Post strangerPublic = posts.saveAndFlush(Post.builder().user(stranger).content("Stranger public")
+                .privacy(PostPrivacy.PUBLIC).build());
+        Post secondFriendPost = posts.saveAndFlush(Post.builder().user(secondFriend).content("Friend story")
+                .privacy(PostPrivacy.FRIENDS).build());
+        // Newer ineligible posts must not consume any slots in the page.
+        for (PostPrivacy privacy : PostPrivacy.values()) {
+            posts.saveAndFlush(Post.builder().user(viewer).content("Own " + privacy).privacy(privacy).build());
+        }
+        posts.saveAndFlush(Post.builder().user(stranger).content("Stranger friends")
+                .privacy(PostPrivacy.FRIENDS).build());
+        posts.saveAndFlush(Post.builder().user(stranger).content("Stranger private")
+                .privacy(PostPrivacy.PRIVATE).build());
+        for (UserStatus state : new UserStatus[]{UserStatus.DISABLED, UserStatus.DELETED, UserStatus.PENDING_VERIFICATION}) {
+            User unavailable = user(state.name().toLowerCase());
+            friendships.saveAndFlush(new Friendship(viewer, unavailable));
+            for (PostPrivacy privacy : new PostPrivacy[]{PostPrivacy.PUBLIC, PostPrivacy.FRIENDS}) {
+                posts.saveAndFlush(Post.builder().user(unavailable).content("Unavailable").privacy(privacy).build());
+            }
+            unavailable.setStatus(state);
+            users.saveAndFlush(unavailable);
+        }
+        var visibleIds = java.util.Set.of(publicId, friendPost.get("id").asText(),
+                strangerPublic.getId(), secondFriendPost.getId());
+        var expected = posts.findAll().stream().filter(post -> visibleIds.contains(post.getId()))
+                .sorted(java.util.Comparator.comparing(Post::getCreatedAt).reversed()
+                        .thenComparing(Post::getId, java.util.Comparator.reverseOrder()))
+                .map(Post::getId).toList();
+        mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(4))
+                .andExpect(jsonPath("$.data.items[?(@.userId == '" + viewer.getId() + "')]").isEmpty())
+                .andExpect(jsonPath("$.data.items[?(@.privacy == 'PRIVATE')]").isEmpty())
+                .andExpect(jsonPath("$.data.items[?(@.id == '" + publicId + "')].authorName").value("Minh Anh"))
+                .andExpect(jsonPath("$.data.items[?(@.id == '" + publicId + "')].authorAvatarUrl").value("/avatar.png"));
+        for (int page = 0; page < 2; page++) {
+            mvc.perform(get("/api/post/feed").param("page", String.valueOf(page)).param("size", "2")
+                            .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(2))
+                    .andExpect(jsonPath("$.data.items[0].id").value(expected.get(page * 2)))
+                    .andExpect(jsonPath("$.data.items[1].id").value(expected.get(page * 2 + 1)))
+                    .andExpect(jsonPath("$.data.page").value(page))
+                    .andExpect(jsonPath("$.data.hasNext").value(page == 0));
+        }
+        mvc.perform(get("/api/post/feed").param("page", "2").param("size", "2")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mvc.perform(get("/api/users/{id}/posts", viewer.getId())
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(3));
+        patchPost(friendPost.get("id").asText(), "{\"privacy\":\"PRIVATE\"}", 200);
+        mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(3));
+        friendships.deleteAll();
+        mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(2));
+        mvc.perform(get(friendPost.get("media").get(0).get("url").asText())
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void feedRequiresLoginAndValidPagination() throws Exception {
+        mvc.perform(get("/api/post/feed")).andExpect(status().isUnauthorized());
+        for (String[] params : new String[][]{{"page", "-1"}, {"size", "0"}, {"size", "51"}, {"page", "abc"}}) {
+            mvc.perform(get("/api/post/feed").param(params[0], params[1])
+                            .with(jwt().jwt(token -> token.subject(author.getId()))))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
     void publicFeedOnlyReturnsPublicPostsFromActiveAuthorsAndIncludesAuthorDetails() throws Exception {
         profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", null, null, null, null));
         String publicId = create("{\"content\":\"Public A\",\"privacy\":\"PUBLIC\"}", image()).get("id").asText();

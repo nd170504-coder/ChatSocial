@@ -10,7 +10,7 @@ import { AppLayout } from '../layouts/AppLayout'
 import { ProfilePage } from '../features/profile/pages/ProfilePage'
 import { AccountPage } from '../features/account/pages/AccountPage'
 import { PostPage } from '../features/posts/pages/PostPage'
-import { PublicPostsPage } from '../features/posts/pages/PublicPostsPage'
+import { FeedPage } from '../features/posts/pages/FeedPage'
 import { FindFriendsPage } from '../features/friends/pages/FindFriendsPage'
 import { UserProfilePage } from '../features/profile/pages/UserProfilePage'
 import { FriendRequestsPage } from '../features/friends/pages/FriendRequestsPage'
@@ -30,7 +30,7 @@ export function AppRouter() {
     <Route element={<AuthGate requireSession />}>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/feed" replace />} />
-        <Route path="/feed" element={<PublicPostsPage />} />
+        <Route path="/feed" element={<FeedPage />} />
         <Route path="/friends/search" element={<FindFriendsPage />} />
         <Route path="/friends" element={<FriendsPage />} />
         <Route path="/friends/requests" element={<FriendRequestsPage />} />
