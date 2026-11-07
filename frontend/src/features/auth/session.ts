@@ -1,6 +1,7 @@
 import { ApiError, apiBlobRequest, apiRequest } from '../../api/client'
 import { authApi } from './api'
 import type { AuthSession, LoginRequest, User } from './types'
+import { tokenExpiresAt } from './token'
 
 const STORAGE_KEY = 'chatsocial.auth'
 type Snapshot = {
@@ -98,6 +99,13 @@ export function authenticatedBlobRequest(path: `/${string}`, options: RequestIni
 }
 
 export const authStore = {
+  async getAccessToken() {
+    const current = snapshot.session
+    if (!current) throw new ApiError(401)
+    const expiresAt = tokenExpiresAt(current.accessToken)
+    if (expiresAt === null || expiresAt <= Date.now() + 30_000) return (await refresh()).accessToken
+    return current.accessToken
+  },
   // Account mutations already revoke sessions on the backend; do not call logout again.
   endSession: clear,
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },

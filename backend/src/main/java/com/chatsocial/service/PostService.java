@@ -6,6 +6,7 @@ import com.chatsocial.dto.comment.CommentResponse;
 import com.chatsocial.dto.comment.CreateCommentRequest;
 import com.chatsocial.dto.post.*;
 import com.chatsocial.entity.*;
+import com.chatsocial.enums.NotificationType;
 import com.chatsocial.enums.PostPrivacy;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
@@ -46,6 +47,8 @@ public class PostService {
     private final CommentRepository commentRepository;
     private final SupabaseStorageService storage;
     private final PlatformTransactionManager transactionManager;
+    private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
 
     public PostResponse createPost(String userId, CreatePostRequest request, List<MultipartFile> files) {
         List<MultipartFile> images = files == null ? List.of() : files;
@@ -166,6 +169,7 @@ public class PostService {
             commentRepository.deleteAllByPostId(postId);
             postLikeRepository.deleteAllByPostId(postId);
             postMediaRepository.deleteAllByPostId(postId);
+            notificationRepository.deleteAllByPostId(postId);
             postRepository.delete(post);
             postRepository.flush();
             return mediaPaths;
@@ -315,6 +319,12 @@ public class PostService {
                     .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không còn hoạt động"));
 
             postLikeRepository.save(new PostLike(post, user));
+            notificationService.create(
+                    post.getUser(),
+                    user,
+                    post,
+                    NotificationType.POST_LIKED
+            );
         }
 
         return buildLikeResponse(postId, currentUserId);
@@ -402,6 +412,13 @@ public class PostService {
         Comment comment = new Comment(null, post, user, null, content, null, null);
 
         commentRepository.saveAndFlush(comment);
+
+        notificationService.create(
+                post.getUser(),
+                user,
+                post,
+                NotificationType.POST_COMMENTED
+        );
 
         return toCommentResponse(comment);
     }
