@@ -14,4 +14,19 @@ public interface PostLikeRepository extends JpaRepository<PostLike, String> {
     @Query("delete from PostLike pl where pl.post.id = :postId")
     void deleteAllByPostId(@Param("postId") String postId);
 
+    long countByPostId(String postId);
+
+    boolean existsByPostIdAndUserId(String postId, String userId);
+
+    @Modifying
+    @Query("""
+        delete from PostLike pl
+        where pl.post.id = :postId
+          and pl.user.id = :userId
+        """)
+    int deleteByPostAndUser(
+            @Param("postId") String postId,
+            @Param("userId") String userId
+    );
+
 }

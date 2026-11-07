@@ -214,6 +214,168 @@ class PostIntegrationTests {
     }
 
     @Test
+    void unfriendingRevokesFriendsPostsMediaAndInteractionsInBothDirections() throws Exception {
+        JsonNode friendPost = create("{\"content\":\"Friends A\",\"privacy\":\"FRIENDS\"}", image());
+        String friendId = friendPost.get("id").asText();
+        String mediaUrl = friendPost.get("media").get(0).get("url").asText();
+        String publicId = create("{\"content\":\"Public A\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        User viewer = user("viewer");
+        User stranger = user("stranger");
+        Post otherPost = posts.saveAndFlush(Post.builder().user(viewer).content("Friends B").privacy(PostPrivacy.FRIENDS).build());
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        when(storage.downloadPostImage(anyString()))
+                .thenReturn(new SupabaseStorageService.DownloadedImage(PNG, "image/png"));
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk());
+        mvc.perform(delete("/api/friends/{id}", viewer.getId())).andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/friends/{id}", author.getId()).with(jwt().jwt(token -> token.subject(stranger.getId()))))
+                .andExpect(status().isNotFound());
+        assertTrue(friendships.areFriends(author.getId(), viewer.getId()));
+        mvc.perform(delete("/api/friends/{id}", author.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/friends/{id}", viewer.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk());
+        assertFalse(friendships.areFriends(author.getId(), viewer.getId()));
+        mvc.perform(get("/api/users/{id}/profile", author.getId()).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.relationship").value("NONE"));
+        mvc.perform(get("/api/friends").with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        for (User participant : java.util.List.of(author, viewer)) {
+            String hiddenId = participant.getId().equals(author.getId()) ? otherPost.getId() : friendId;
+            for (String suffix : new String[]{"", "/likes", "/comments", "/comments/count"}) {
+                mvc.perform(get("/api/post/" + hiddenId + suffix).with(jwt().jwt(token -> token.subject(participant.getId()))))
+                        .andExpect(status().isNotFound());
+            }
+            mvc.perform(get("/api/users/{id}/friends/count", participant.getId())
+                            .with(jwt().jwt(token -> token.subject(participant.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.friendCount").value(0));
+            mvc.perform(get("/api/post/feed").with(jwt().jwt(token -> token.subject(participant.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[?(@.privacy == 'FRIENDS')]").isEmpty());
+        }
+        mvc.perform(get(mediaUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/users/{id}/posts", author.getId()).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(publicId));
+        mvc.perform(delete("/api/friends/{id}", viewer.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void commentsSupportPaginationCountsAndOnlyOwnerDeletion() throws Exception {
+        String id = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        String url = "/api/post/" + id + "/comments";
+        User viewer = user("viewer");
+        profiles.saveAndFlush(new UserProfile(null, viewer, "Minh", "/avatar.png", null, null, null, null));
+        mvc.perform(get(url + "/count").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(0));
+        String result = mvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"  Hello  \"}")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.content").value("Hello"))
+                .andExpect(jsonPath("$.data.userId").value(viewer.getId()))
+                .andExpect(jsonPath("$.data.fullName").value("Minh"))
+                .andExpect(jsonPath("$.data.avatarUrl").value("/avatar.png"))
+                .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String commentId = json.readTree(result).get("data").get("id").asText();
+        String second = mvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Another\"}")
+                        .with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String secondId = json.readTree(second).get("data").get("id").asText();
+        mvc.perform(get(url).param("size", "1").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(secondId))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        mvc.perform(get(url).param("size", "1").param("page", "1")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(commentId))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mvc.perform(delete(url + "/" + commentId).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(url + "/" + commentId).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(1));
+        mvc.perform(delete(url + "/" + commentId).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        author.setStatus(UserStatus.DISABLED);
+        users.saveAndFlush(author);
+        // Use a different active author's post to verify inactive comments are hidden.
+        Post activePost = posts.saveAndFlush(Post.builder().user(viewer).content("Active").privacy(PostPrivacy.PUBLIC).build());
+        comments.saveAndFlush(new com.chatsocial.entity.Comment(null, activePost, author, null, "Hidden", null, null));
+        String activeUrl = "/api/post/" + activePost.getId() + "/comments";
+        mvc.perform(get(activeUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+        mvc.perform(get(activeUrl + "/count").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(0));
+    }
+
+    @Test
+    void commentsRequirePostVisibilityAndValidContent() throws Exception {
+        String id = create("{\"content\":\"Friends\",\"privacy\":\"FRIENDS\"}").get("id").asText();
+        String url = "/api/post/" + id + "/comments";
+        User viewer = user("viewer");
+        for (var request : java.util.List.of(get(url), get(url + "/count"),
+                post(url).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Hi\"}"), delete(url + "/missing"))) {
+            mvc.perform(request).andExpect(status().isUnauthorized());
+            mvc.perform(request.with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        for (String body : new String[]{"{}", "{\"content\":\"   \"}", "{\"content\":\"" + "a".repeat(2001) + "\"}"}) {
+            mvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content(body)
+                            .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isBadRequest());
+        }
+        for (String[] params : new String[][]{{"page", "-1"}, {"size", "0"}, {"size", "51"}}) {
+            mvc.perform(get(url).param(params[0], params[1]).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Hi\"}")
+                        .with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isCreated());
+        patchPost(id, "{\"privacy\":\"PRIVATE\"}", 200);
+        mvc.perform(get(url + "/count").with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void likesAreIdempotentAndRequirePostVisibility() throws Exception {
+        JsonNode post = create("{\"content\":\"Friends\",\"privacy\":\"FRIENDS\"}");
+        String id = post.get("id").asText();
+        String url = "/api/post/" + id + "/likes";
+        User viewer = user("viewer");
+        mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        for (var request : java.util.List.of(get(url), put(url), delete(url))) {
+            mvc.perform(request.with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+        friendships.saveAndFlush(new Friendship(viewer, author));
+        mvc.perform(get(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(0))
+                .andExpect(jsonPath("$.data.likedByMe").value(false));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(put(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.postId").value(id))
+                    .andExpect(jsonPath("$.data.likeCount").value(1))
+                    .andExpect(jsonPath("$.data.likedByMe").value(true));
+        }
+        mvc.perform(get(url).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(1))
+                .andExpect(jsonPath("$.data.likedByMe").value(false));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(delete(url).with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.likeCount").value(0))
+                    .andExpect(jsonPath("$.data.likedByMe").value(false));
+        }
+        patchPost(id, "{\"privacy\":\"PRIVATE\"}", 200);
+        for (var request : java.util.List.of(get(url), put(url), delete(url))) {
+            mvc.perform(request.with(jwt().jwt(token -> token.subject(viewer.getId()))))
+                    .andExpect(status().isNotFound());
+        }
+        mvc.perform(put(url).with(jwt().jwt(token -> token.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.likedByMe").value(true));
+    }
+
+    @Test
     void feedRequiresLoginAndValidPagination() throws Exception {
         mvc.perform(get("/api/post/feed")).andExpect(status().isUnauthorized());
         for (String[] params : new String[][]{{"page", "-1"}, {"size", "0"}, {"size", "51"}, {"page", "abc"}}) {

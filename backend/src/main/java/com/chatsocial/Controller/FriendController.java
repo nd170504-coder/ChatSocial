@@ -9,10 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -35,6 +32,14 @@ public class FriendController {
         FriendPageResponse response = friendService.getFriends(currentUserId, page, size);
 
         return ResponseEntity.ok(ApiResponse.success("Friends retrieved successfully", response));
+    }
+
+    @DeleteMapping("/{userId}")
+    @Operation(summary = "Hủy kết bạn")
+    public ResponseEntity<ApiResponse<Void>> unfriend(@PathVariable("userId") String userId) {
+        friendService.unfriend(SecurityUtils.getCurrentUserId(), userId);
+
+        return ResponseEntity.ok(ApiResponse.success("Đã hủy kết bạn", null));
     }
 
 }

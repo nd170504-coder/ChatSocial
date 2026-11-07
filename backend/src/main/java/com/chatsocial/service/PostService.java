@@ -1,13 +1,11 @@
 package com.chatsocial.service;
 
-import com.chatsocial.dto.post.CreatePostRequest;
-import com.chatsocial.dto.post.PostPageResponse;
-import com.chatsocial.dto.post.PostResponse;
-import com.chatsocial.dto.post.UpdatePostRequest;
-import com.chatsocial.entity.Post;
-import com.chatsocial.entity.PostMedia;
-import com.chatsocial.entity.UserProfile;
-import com.chatsocial.entity.User;
+import com.chatsocial.dto.comment.CommentCountResponse;
+import com.chatsocial.dto.comment.CommentPageResponse;
+import com.chatsocial.dto.comment.CommentResponse;
+import com.chatsocial.dto.comment.CreateCommentRequest;
+import com.chatsocial.dto.post.*;
+import com.chatsocial.entity.*;
 import com.chatsocial.enums.PostPrivacy;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
@@ -291,6 +289,178 @@ public class PostService {
 
     private ApiException postNotFound() {
         return new ApiException(HttpStatus.NOT_FOUND, "Post not found");
+    }
+
+    @Transactional(readOnly = true)
+    public PostLikeResponse getLikeStatus(String currentUserId, String postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(this::postNotFound);
+
+        if (!canView(post, currentUserId)) {
+            throw postNotFound();
+        }
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    @Transactional
+    public PostLikeResponse likePost(String currentUserId, String postId) {
+        Post post = getVisiblePostForLike(currentUserId, postId);
+
+        boolean alreadyLiked = postLikeRepository.existsByPostIdAndUserId(postId, currentUserId);
+
+        if (!alreadyLiked) {
+            User user = userRepository.findById(currentUserId)
+                    .filter(value -> value.getStatus() == UserStatus.ACTIVE)
+                    .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không còn hoạt động"));
+
+            postLikeRepository.save(new PostLike(post, user));
+        }
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    @Transactional
+    public PostLikeResponse unlikePost(String currentUserId, String postId) {
+        getVisiblePostForLike(currentUserId, postId);
+
+        postLikeRepository.deleteByPostAndUser(postId, currentUserId);
+
+        return buildLikeResponse(postId, currentUserId);
+    }
+
+    private Post getVisiblePostForLike(String currentUserId, String postId) {
+        Post post = postRepository.findForUpdateById(postId)
+                .orElseThrow(this::postNotFound);
+
+        if (!canView(post, currentUserId)) {
+            throw postNotFound();
+        }
+
+        return post;
+    }
+
+    private PostLikeResponse buildLikeResponse(String postId, String currentUserId) {
+        return new PostLikeResponse(
+                postId,
+                postLikeRepository.countByPostId(postId),
+                postLikeRepository.existsByPostIdAndUserId(postId, currentUserId)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CommentPageResponse getComments(String currentUserId, String postId, int page, int size) {
+        getPostForComment(currentUserId, postId, false);
+
+        if (page < 0 || size < 1 || size > 50) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên, size từ 1 đến 50");
+        }
+
+        PageRequest pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(
+                        Sort.Order.desc("createdAt"),
+                        Sort.Order.desc("id")
+                )
+        );
+
+        var comments = commentRepository.findVisibleComments(postId, UserStatus.ACTIVE, pageable);
+
+        var items = comments.getContent().stream()
+                .map(this::toCommentResponse)
+                .toList();
+
+        return new CommentPageResponse(
+                items,
+                comments.getNumber(),
+                comments.getSize(),
+                comments.hasNext()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CommentCountResponse getCommentCount(String currentUserId, String postId) {
+        getPostForComment(currentUserId, postId, false);
+        return buildCommentCount(postId);
+    }
+
+    @Transactional
+    public CommentResponse createComment(String currentUserId, String postId, CreateCommentRequest request) {
+        Post post = getPostForComment(currentUserId, postId, true);
+
+        User user = userRepository.findById(currentUserId)
+                .filter(value -> value.getStatus() == UserStatus.ACTIVE)
+                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không còn hoạt động"));
+
+        String content = request.content().strip();
+
+        if (content.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Nội dung bình luận không được để trống");
+        }
+
+        Comment comment = new Comment(null, post, user, null, content, null, null);
+
+        commentRepository.saveAndFlush(comment);
+
+        return toCommentResponse(comment);
+    }
+
+    @Transactional
+    public CommentCountResponse deleteComment(String currentUserId, String postId, String commentId) {
+        getPostForComment(currentUserId, postId, true);
+
+        Comment comment = commentRepository.findByIdAndPostId(commentId, postId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bình luận"));
+
+        if (!comment.getUser().getId().equals(currentUserId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn chỉ được xóa bình luận của mình");
+        }
+
+        if (commentRepository.existsByParentCommentId(commentId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Chưa hỗ trợ xóa bình luận đã có phản hồi");
+        }
+
+        commentRepository.delete(comment);
+        commentRepository.flush();
+
+        return buildCommentCount(postId);
+    }
+
+    private Post getPostForComment(String currentUserId, String postId, boolean forUpdate) {
+        var result = forUpdate
+                ? postRepository.findForUpdateById(postId)
+                : postRepository.findById(postId);
+
+        Post post = result.orElseThrow(this::postNotFound);
+
+        if (!canView(post, currentUserId)) {
+            throw postNotFound();
+        }
+
+        return post;
+    }
+
+    private CommentCountResponse buildCommentCount(String postId) {
+        long count = commentRepository.countByPostIdAndUserStatus(postId, UserStatus.ACTIVE);
+        return new CommentCountResponse(postId, count);
+    }
+
+    private CommentResponse toCommentResponse(Comment comment) {
+        User user = comment.getUser();
+
+        UserProfile profile = userProfileRepository.findByUserId(user.getId())
+                .orElse(null);
+
+        return new CommentResponse(
+                comment.getId(),
+                comment.getPost().getId(),
+                user.getId(),
+                profile == null ? user.getUsername() : profile.getFullName(),
+                profile == null ? null : profile.getAvatarUrl(),
+                comment.getContent(),
+                comment.getCreatedAt()
+        );
     }
 
 }

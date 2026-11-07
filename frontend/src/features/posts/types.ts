@@ -1,5 +1,33 @@
 export type PostPrivacy = 'PUBLIC' | 'FRIENDS' | 'PRIVATE'
 
+export interface PostComment {
+  id: string
+  postId: string
+  userId: string
+  fullName: string
+  avatarUrl: string | null
+  content: string
+  createdAt: string
+}
+
+export interface CommentPage {
+  items: PostComment[]
+  page: number
+  size: number
+  hasNext: boolean
+}
+
+export interface CommentCount {
+  postId: string
+  commentCount: number
+}
+
+export interface PostLikeStatus {
+  postId: string
+  likeCount: number
+  likedByMe: boolean
+}
+
 export interface PostMedia {
   id: string
   url: string

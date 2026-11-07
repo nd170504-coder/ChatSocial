@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link } from 'react-router'
 import { Icon } from '../../../components/ui/Icon'
 import { useAuth } from '../../auth/hooks/useAuth'
-import { Avatar } from '../../profile/components/Avatar'
 import { postApi } from '../api'
 import type { Post } from '../types'
-import { postError, postTime, privacyLabels } from '../utils'
+import { postError } from '../utils'
 import { PostEditor } from './PostEditor'
-import { PostGallery } from './PostGallery'
+import { PostLikes, usePostLikes } from './PostLikes'
+import { PostComments } from './PostComments'
+import { PostBody } from './PostBody'
 
 function PostDialog({ post, mode, name, avatarUrl, onClose, onSaved, onDeleted }: {
   post: Post; mode: 'edit' | 'delete'; name: string; avatarUrl?: string | null
@@ -49,17 +49,14 @@ export function PostCard({ post, authorName, avatarUrl, onSaved, onDeleted }: {
   const { session } = useAuth()
   const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
   const own = post.userId === session?.user.id
-  const profilePath = own ? '/profile' : `/users/${encodeURIComponent(post.userId)}`
-  const [expanded, setExpanded] = useState(false)
-  const long = (post.content?.length || 0) > 600
+  const likes = usePostLikes(post.id)
 
   return <article className="post-card">
-    <header className="post-card-header"><Link className="post-author-avatar" to={profilePath} aria-label={`Xem hồ sơ của ${authorName}`}><Avatar name={authorName} src={avatarUrl} className="post-avatar" /></Link><div className="post-card-author"><strong><Link className="post-author-name" to={profilePath}>{authorName}</Link></strong><div><Link to={`/posts/${post.id}`} aria-label="Xem chi tiết bài viết"><time dateTime={post.createdAt}>{postTime(post.createdAt)}</time></Link><span aria-hidden="true">·</span><span title={privacyLabels[post.privacy]}><Icon name={post.privacy === 'PRIVATE' ? 'lock' : 'shield'} width="12" height="12" />{privacyLabels[post.privacy]}</span></div></div>
-      {own && <div className="post-card-tools"><button type="button" className="icon-button" aria-label="Chỉnh sửa bài viết" onClick={() => setDialog('edit')}><Icon name="edit" width="16" height="16" /></button><button type="button" className="icon-button" aria-label="Xóa bài viết" onClick={() => setDialog('delete')}><Icon name="trash" width="16" height="16" /></button></div>}
-    </header>
-    {post.content && <div className="post-card-content"><p>{long && !expanded ? `${post.content.slice(0, 600)}…` : post.content}</p>{long && <button type="button" className="post-text-toggle" onClick={() => setExpanded(value => !value)}>{expanded ? 'Thu gọn' : 'Xem thêm'}</button>}</div>}
-    <PostGallery postId={post.id} media={post.media} />
-    {post.updatedAt !== post.createdAt && <p className="post-edited">Đã chỉnh sửa</p>}
+    <PostBody post={post} authorName={authorName} avatarUrl={avatarUrl} tools={own && <div className="post-card-tools"><button type="button" className="icon-button" aria-label="Chỉnh sửa bài viết" onClick={() => setDialog('edit')}><Icon name="edit" width="16" height="16" /></button><button type="button" className="icon-button" aria-label="Xóa bài viết" onClick={() => setDialog('delete')}><Icon name="trash" width="16" height="16" /></button></div>} />
+    <div className="post-interactions">
+      <PostLikes state={likes} />
+      <PostComments key={`comments:${post.id}:${session?.user.id}`} post={post} authorName={authorName} avatarUrl={avatarUrl} likes={likes} />
+    </div>
     {dialog && <PostDialog post={post} mode={dialog} name={authorName} avatarUrl={avatarUrl} onClose={() => setDialog(null)} onSaved={onSaved} onDeleted={onDeleted} />}
   </article>
 }

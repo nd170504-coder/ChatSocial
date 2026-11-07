@@ -6,6 +6,7 @@ import com.chatsocial.enums.UserStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -59,6 +60,17 @@ public interface FriendshipRepository extends JpaRepository<Friendship, String >
     long countActiveFriends(
             @Param("userId") String userId,
             @Param("status") UserStatus status
+    );
+
+    @Modifying
+    @Query("""
+        delete from Friendship f
+        where (f.user.id = :userId and f.friend.id = :otherUserId)
+           or (f.user.id = :otherUserId and f.friend.id = :userId)
+        """)
+    int deleteFriendship(
+            @Param("userId") String userId,
+            @Param("otherUserId") String otherUserId
     );
 
 }

@@ -1,7 +1,28 @@
 import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
-import type { Post, PostPage, PostValues } from './types'
+import type { CommentCount, CommentPage, Post, PostComment, PostLikeStatus, PostPage, PostValues } from './types'
 
 export const postApi = {
+  comments: (postId: string, page = 0, signal?: AbortSignal) => authenticatedRequest<CommentPage>(
+    `/post/${encodeURIComponent(postId)}/comments?page=${page}&size=10`, { signal },
+  ),
+  commentCount: (postId: string, signal?: AbortSignal) => authenticatedRequest<CommentCount>(
+    `/post/${encodeURIComponent(postId)}/comments/count`, { signal },
+  ),
+  createComment: (postId: string, content: string) => authenticatedRequest<PostComment>(
+    `/post/${encodeURIComponent(postId)}/comments`, { method: 'POST', body: JSON.stringify({ content }) },
+  ),
+  deleteComment: (postId: string, commentId: string) => authenticatedRequest<CommentCount>(
+    `/post/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' },
+  ),
+  likes: (postId: string, signal?: AbortSignal) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { signal },
+  ),
+  like: (postId: string) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { method: 'PUT' },
+  ),
+  unlike: (postId: string) => authenticatedRequest<PostLikeStatus>(
+    `/post/${encodeURIComponent(postId)}/likes`, { method: 'DELETE' },
+  ),
   feed: (page = 0, signal?: AbortSignal) => authenticatedRequest<PostPage>(
     `/post/feed?page=${page}&size=10`, { signal },
   ),
