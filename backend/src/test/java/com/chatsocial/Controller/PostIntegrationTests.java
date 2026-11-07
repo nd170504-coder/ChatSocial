@@ -46,6 +46,7 @@ class PostIntegrationTests {
     @Autowired PostRepository posts;
     @Autowired FriendshipRepository friendships;
     @Autowired CommentRepository comments;
+    @Autowired NotificationRepository notifications;
     @Autowired PostLikeRepository likes;
     @MockitoSpyBean PostMediaRepository media;
     @MockitoBean SupabaseStorageService storage;
@@ -59,6 +60,7 @@ class PostIntegrationTests {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        notifications.deleteAll();
         comments.deleteAll();
         likes.deleteAll();
         media.deleteAll();

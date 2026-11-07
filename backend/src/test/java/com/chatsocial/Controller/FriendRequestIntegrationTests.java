@@ -16,6 +16,7 @@ import com.chatsocial.repository.FriendRequestRepository;
 import com.chatsocial.repository.FriendshipRepository;
 import com.chatsocial.repository.UserRepository;
 import com.chatsocial.repository.UserProfileRepository;
+import com.chatsocial.repository.NotificationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +52,7 @@ class FriendRequestIntegrationTests {
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
     @Autowired UserProfileRepository profiles;
+    @Autowired NotificationRepository notifications;
     @MockitoSpyBean FriendRequestRepository requests;
     @Autowired PostRepository posts;
     @Autowired PostMediaRepository media;
@@ -65,6 +67,7 @@ class FriendRequestIntegrationTests {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        notifications.deleteAll();
         requests.deleteAll();
         friendships.deleteAll();
         media.deleteAll();

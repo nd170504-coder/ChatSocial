@@ -10,6 +10,7 @@ import com.chatsocial.entity.FriendRequest;
 import com.chatsocial.entity.User;
 import com.chatsocial.entity.Friendship;
 import com.chatsocial.enums.FriendshipStatus;
+import com.chatsocial.enums.NotificationType;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.exception.ApiException;
 import com.chatsocial.repository.FriendRequestRepository;
@@ -32,6 +33,7 @@ public class FriendRequestService {
     private final FriendshipRepository friendships;
     private final UserRepository users;
     private final UserProfileRepository profiles;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public FriendRequestPageResponse list(String userId, boolean incoming, int page, int size) {
@@ -91,7 +93,16 @@ public class FriendRequestService {
             request.setAddressee(addressee);
             request.setStatus(FriendshipStatus.PENDING);
         }
-        return FriendRequestResponse.from(requests.saveAndFlush(request));
+        requests.saveAndFlush(request);
+
+        notificationService.create(
+                addressee,
+                requester,
+                null,
+                NotificationType.FRIEND_REQUEST
+        );
+
+        return FriendRequestResponse.from(request);
     }
 
     @Transactional
@@ -119,7 +130,17 @@ public class FriendRequestService {
             friendships.saveAndFlush(new Friendship(request.getRequester(), request.getAddressee()));
         }
         request.setStatus(accept ? FriendshipStatus.ACCEPTED : FriendshipStatus.REJECTED);
-        return FriendRequestResponse.from(requests.saveAndFlush(request));
+        requests.saveAndFlush(request);
+        if (accept) {
+            notificationService.create(
+                    request.getRequester(),
+                    request.getAddressee(),
+                    null,
+                    NotificationType.FRIEND_ACCEPTED
+            );
+        }
+
+        return FriendRequestResponse.from(request);
     }
 
     private FriendRequest lockedRequest(String actorId, String requestId, boolean requireActiveOther) {
