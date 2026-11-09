@@ -12,6 +12,20 @@ export function connectNotifications(options: {
   onReady: () => void
   onStatus: (status: ConnectionStatus) => void
 }) {
+  return connectUserChannel({ ...options, destination: '/user/queue/notifications', onMessage: body => {
+    const item = parseNotification(body)
+    if (item) options.onNotification(item)
+  } })
+}
+
+export function connectUserChannel(options: {
+  url: string
+  destination: '/user/queue/notifications' | '/user/queue/chat' | '/user/queue/presence'
+  getToken: () => Promise<string>
+  onMessage: (body: string) => void
+  onReady: () => void
+  onStatus: (status: ConnectionStatus) => void
+}) {
   let stopped = false
   let generation = 0
   let client: Client | null = null
@@ -42,7 +56,7 @@ export function connectNotifications(options: {
         connectHeaders: { Authorization: `Bearer ${token}` },
         reconnectDelay: 0,
         connectionTimeout: 10_000,
-        heartbeatIncoming: 0,
+        heartbeatIncoming: 10_000,
         heartbeatOutgoing: 10_000,
         debug: () => {},
       })
@@ -50,10 +64,9 @@ export function connectNotifications(options: {
       const isCurrent = () => !stopped && client === current && generation === started
       current.onConnect = () => {
         if (!isCurrent()) return
-        current.subscribe('/user/queue/notifications', message => {
+        current.subscribe(options.destination, message => {
           if (!isCurrent()) return
-          const item = parseNotification(message.body)
-          if (item) options.onNotification(item)
+          options.onMessage(message.body)
         })
         options.onStatus('connected')
         options.onReady()

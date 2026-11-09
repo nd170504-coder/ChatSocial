@@ -1,0 +1,17 @@
+import { authenticatedRequest } from '../auth/session'
+import type { ChatMessage, ChatRead, Conversation, ConversationPage, MessagePage } from './types'
+
+export const chatApi = {
+  open: (userId: string) => authenticatedRequest<Conversation>('/conversations/direct', { method: 'POST', body: JSON.stringify({ userId }) }),
+  list: (page = 0, signal?: AbortSignal) => authenticatedRequest<ConversationPage>(`/conversations?page=${page}&size=20`, { signal }),
+  get: (id: string, signal?: AbortSignal) => authenticatedRequest<Conversation>(`/conversations/${encodeURIComponent(id)}`, { signal }),
+  history: (id: string, before?: string | null, signal?: AbortSignal) => authenticatedRequest<MessagePage>(
+    `/conversations/${encodeURIComponent(id)}/messages?size=20${before ? `&before=${encodeURIComponent(before)}` : ''}`, { signal },
+  ),
+  send: (id: string, content: string, clientMessageId: string) => authenticatedRequest<ChatMessage>(
+    `/conversations/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId }), signal: AbortSignal.timeout(20_000) },
+  ),
+  read: (id: string, lastReadMessageId: string) => authenticatedRequest<ChatRead>(
+    `/conversations/${encodeURIComponent(id)}/read`, { method: 'PUT', body: JSON.stringify({ lastReadMessageId }) },
+  ),
+}

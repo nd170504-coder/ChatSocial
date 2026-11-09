@@ -16,7 +16,9 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
@@ -81,8 +83,17 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
         authenticate(authentication.getToken().getTokenValue());
 
         if (command == StompCommand.SUBSCRIBE) {
-            if (!"/user/queue/notifications".equals(accessor.getDestination())) {
-                throw new AccessDeniedException("Subscription is not allowed");
+            String destination = accessor.getDestination();
+
+            boolean allowed =
+                    "/user/queue/notifications".equals(destination)
+                            || "/user/queue/chat".equals(destination)
+                            || "/user/queue/presence".equals(destination);
+
+            if (!allowed) {
+                throw new AccessDeniedException(
+                        "Subscription is not allowed"
+                );
             }
 
             return message;
@@ -126,6 +137,25 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
     @EventListener
     public void disconnected(SessionDisconnectEvent event) {
         sessions.remove(event.getSessionId());
+    }
+
+    public Set<String> getOnlineUserIds() {
+        Set<String> onlineUserIds = new HashSet<>();
+
+        for (JwtAuthenticationToken session : sessions.values()) {
+            try {
+                // Kiểm tra lại JWT, tài khoản và phiên đăng nhập.
+                JwtAuthenticationToken authentication = authenticate(
+                        session.getToken().getTokenValue()
+                );
+
+                onlineUserIds.add(authentication.getName());
+            } catch (RuntimeException exception) {
+                // Phiên hết hạn hoặc bị thu hồi không được tính online.
+            }
+        }
+
+        return Set.copyOf(onlineUserIds);
     }
 
 }

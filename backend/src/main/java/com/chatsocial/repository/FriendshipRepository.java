@@ -11,6 +11,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, String > {
 
@@ -71,6 +73,22 @@ public interface FriendshipRepository extends JpaRepository<Friendship, String >
     int deleteFriendship(
             @Param("userId") String userId,
             @Param("otherUserId") String otherUserId
+    );
+
+    @Query("""
+    select u.id
+    from User u
+    where u.status = :status
+      and exists (
+          select f.id
+          from Friendship f
+          where (f.user.id = :userId and f.friend.id = u.id)
+             or (f.friend.id = :userId and f.user.id = u.id)
+      )
+    """)
+    List<String> findActiveFriendIds(
+            @Param("userId") String userId,
+            @Param("status") UserStatus status
     );
 
 }

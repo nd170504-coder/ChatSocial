@@ -4,7 +4,7 @@ import { tokenExpiresAt } from '../src/features/auth/token'
 import type { NotificationItem } from '../src/features/notifications/types'
 
 const mocks = vi.hoisted(() => ({ clients: [] as Array<{
-  connectHeaders: Record<string, string>; activate: ReturnType<typeof vi.fn>; deactivate: ReturnType<typeof vi.fn>
+  connectHeaders: Record<string, string>; heartbeatIncoming: number; heartbeatOutgoing: number; activate: ReturnType<typeof vi.fn>; deactivate: ReturnType<typeof vi.fn>
   subscribe: ReturnType<typeof vi.fn>; forceDisconnect: ReturnType<typeof vi.fn>
   onConnect: () => void; onWebSocketClose: () => void; onStompError: () => void
 }> }))
@@ -18,6 +18,32 @@ const notification: NotificationItem = { id: 'n-1', type: 'POST_LIKED', actorId:
 const token = (exp: number) => `header.${btoa(JSON.stringify({ exp }))}.signature`
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
 beforeEach(() => { mocks.clients.length = 0 })
+
+it('receives presence on the private channel with heartbeats and ignores old connections after reconnect', async () => {
+  vi.useFakeTimers()
+  const { connectUserChannel } = await import('../src/features/notifications/socket')
+  const onMessage = vi.fn(), onReady = vi.fn(), onStatus = vi.fn()
+  const connection = connectUserChannel({ url: 'ws://localhost/ws', destination: '/user/queue/presence',
+    getToken: async () => token(Date.now() / 1000 + 3600), onMessage, onReady, onStatus })
+  await flush()
+  const first = mocks.clients[0]
+  first.onConnect()
+  expect(first.heartbeatIncoming).toBe(10_000)
+  expect(first.heartbeatOutgoing).toBe(10_000)
+  expect(first.subscribe.mock.calls[0][0]).toBe('/user/queue/presence')
+  first.subscribe.mock.calls[0][1]({ body: 'online' })
+  first.onWebSocketClose()
+  expect(onStatus).toHaveBeenLastCalledWith('reconnecting')
+  await vi.advanceTimersByTimeAsync(5000)
+  const second = mocks.clients[1]
+  second.onConnect()
+  first.subscribe.mock.calls[0][1]({ body: 'stale' })
+  second.subscribe.mock.calls[0][1]({ body: 'offline' })
+  expect(onMessage.mock.calls).toEqual([['online'], ['offline']])
+  connection.stop()
+  second.subscribe.mock.calls[0][1]({ body: 'after-logout' })
+  expect(onMessage).toHaveBeenCalledTimes(2)
+})
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 it('derives the root WebSocket URL without including API paths, queries or credentials', () => {

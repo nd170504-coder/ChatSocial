@@ -15,6 +15,7 @@ import { FindFriendsPage } from '../features/friends/pages/FindFriendsPage'
 import { UserProfilePage } from '../features/profile/pages/UserProfilePage'
 import { FriendRequestsPage } from '../features/friends/pages/FriendRequestsPage'
 import { FriendsPage } from '../features/friends/pages/FriendsPage'
+import { ChatPage } from '../features/chat/ChatPage'
 
 export function AppRouter() {
   return <Routes>
@@ -31,6 +32,8 @@ export function AppRouter() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/feed" replace />} />
         <Route path="/feed" element={<FeedPage />} />
+        <Route path="/messages" element={<ChatPage />} />
+        <Route path="/messages/:conversationId" element={<ChatPage />} />
         <Route path="/friends/search" element={<FindFriendsPage />} />
         <Route path="/friends" element={<FriendsPage />} />
         <Route path="/friends/requests" element={<FriendRequestsPage />} />

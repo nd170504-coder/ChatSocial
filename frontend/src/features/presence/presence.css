@@ -1,0 +1,3 @@
+.profile-avatar:has(.presence-dot) { position: relative; overflow: visible; }
+.profile-avatar:has(.presence-dot) > img { border-radius: 50%; }
+.presence-dot { position: absolute; right: 0; bottom: 0; width: 24%; height: 24%; min-width: 9px; min-height: 9px; max-width: 18px; max-height: 18px; border-radius: 50%; background: #22b567; border: 2px solid #fff; box-shadow: 0 0 0 1px #183c2512; pointer-events: none; }
