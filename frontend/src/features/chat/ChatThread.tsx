@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import { Icon } from '../../components/ui/Icon'
 import { useAuth } from '../auth/hooks/useAuth'
 import { Avatar } from '../profile/components/Avatar'
+import { useOnline } from '../presence/PresenceProvider'
 import { postTime } from '../posts/utils'
 import { chatApi } from './api'
 import { useChat } from './ChatProvider'
@@ -17,6 +18,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const userId = session!.user.id
   const { status, connectionRevision, subscribe, refresh, acknowledgeRead } = useChat()
   const [detail, setDetail] = useState<Conversation | null>(null)
+  const online = useOnline(detail?.otherUser.userId)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pending, setPending] = useState<Pending[]>([])
   const [draft, setDraft] = useState('')
@@ -161,7 +163,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   return <section className="chat-thread" aria-label="Nội dung cuộc trò chuyện">
     <header className="chat-thread-heading"><Link to="/messages" className="chat-mobile-back" aria-label="Về danh sách tin nhắn"><Icon name="arrow" /></Link>
-      {detail ? <Link className="chat-person" to={`/users/${encodeURIComponent(detail.otherUser.userId)}`}><Avatar userId={detail.otherUser.userId} name={detail.otherUser.fullName} src={detail.otherUser.avatarUrl} className="chat-avatar" /><span><strong>{detail.otherUser.fullName}</strong><small>@{detail.otherUser.username}</small></span></Link> : <strong>Cuộc trò chuyện</strong>}
+      {detail ? <Link className="chat-person" to={`/users/${encodeURIComponent(detail.otherUser.userId)}`}><Avatar userId={detail.otherUser.userId} name={detail.otherUser.fullName} src={detail.otherUser.avatarUrl} className="chat-avatar" /><span><strong>{detail.otherUser.fullName}</strong>{online && <small className="chat-person-online" role="status">Đang hoạt động</small>}</span></Link> : <strong>Cuộc trò chuyện</strong>}
       <button type="button" className="chat-text-button" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Làm mới</button>
     </header>
     <div className={`chat-connection ${status}`} role="status">{status === 'connected' ? 'Đã kết nối' : status === 'connecting' ? 'Đang kết nối…' : 'Đang kết nối lại; tin đã lưu sẽ được tải bù.'}</div>

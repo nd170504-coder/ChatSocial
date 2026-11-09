@@ -22,6 +22,7 @@
 .chat-person { display: flex; align-items: center; gap: 12px; min-width: 0; color: #263b59; }
 .chat-person strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
 .chat-person small { display: block; font-size: 10px; color: #8a98ac; margin-top: 5px; overflow-wrap: anywhere; }
+.chat-person .chat-person-online { color: #258855; }
 .chat-thread-heading > .chat-text-button { margin-left: auto; flex-shrink: 0; }
 .chat-mobile-back { display: none; }
 .chat-connection { background: #fff7e9; color: #a17d43; font-size: 10px; padding: 7px 20px; text-align: center; }
