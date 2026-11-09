@@ -14,7 +14,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PUBLIC)
 public class Conversation {
 
     @Id
@@ -22,6 +21,14 @@ public class Conversation {
     @Column(name = "conversation_id")
     @Setter(AccessLevel.NONE)
     private String id;
+
+    @Column(
+            name = "direct_pair_key",
+            unique = true,
+            length = 73,
+            updatable = false
+    )
+    private String directPairKey;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false,
@@ -34,4 +41,12 @@ public class Conversation {
             columnDefinition = "timestamp with time zone")
     @Setter(AccessLevel.NONE)
     private Instant updatedAt;
+
+    public Conversation(String directPairKey) {
+        this.directPairKey = directPairKey;
+    }
+
+    public void touch() {
+        this.updatedAt = Instant.now();
+    }
 }

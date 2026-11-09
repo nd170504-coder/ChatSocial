@@ -9,6 +9,16 @@ import org.hibernate.annotations.CreationTimestamp;
 @Table(
         name = "messages",
         schema = "chatsocial",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uq_messages_client",
+                        columnNames = {
+                                "conversation_id",
+                                "sender_id",
+                                "client_message_id"
+                        }
+                )
+        },
         indexes = {
                 @Index(name = "idx_messages_conversation_created", columnList = "conversation_id, created_at DESC, message_id DESC"),
                 @Index(name = "idx_messages_sender", columnList = "sender_id")
@@ -72,4 +82,18 @@ public class Message {
     @Column(name = "deleted_at",
             columnDefinition = "timestamp with time zone")
     private Instant deletedAt;
+
+    @Column(
+            name = "client_message_id",
+            length = 36,
+            updatable = false
+    )
+    private String clientMessageId;
+
+    public Message(Conversation conversation, User sender, String content, String clientMessageId) {
+        this.conversation = conversation;
+        this.sender = sender;
+        this.content = content;
+        this.clientMessageId = clientMessageId;
+    }
 }

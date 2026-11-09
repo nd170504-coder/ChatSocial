@@ -156,7 +156,7 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
           const own = comment.userId === session?.user.id
           const profilePath = own ? '/profile' : `/users/${encodeURIComponent(comment.userId)}`
           return <li key={comment.id} className="post-comment-item">
-            <Link to={profilePath} aria-label={`Xem hồ sơ của ${comment.fullName}`}><Avatar name={comment.fullName} src={comment.avatarUrl} className="comment-avatar" /></Link>
+            <Link to={profilePath} aria-label={`Xem hồ sơ của ${comment.fullName}`}><Avatar userId={comment.userId} name={comment.fullName} src={comment.avatarUrl} className="comment-avatar" /></Link>
             <div className="post-comment-body"><div className="post-comment-bubble"><Link to={profilePath} className="post-comment-author">{comment.fullName}</Link><p>{comment.content}</p></div>
               <div className="post-comment-meta"><time dateTime={comment.createdAt}>{postTime(comment.createdAt)}</time>{own && <button type="button" disabled={busy || loading} onClick={() => { setConfirmId(comment.id); setActionError(''); setNotice('') }}>Xóa bình luận</button>}</div>
               {confirmId === comment.id && <div className="post-comment-confirm"><span>Xóa bình luận này?</span><button type="button" disabled={busy || loading} onClick={() => void remove(comment.id)}>{busy ? 'Đang xóa…' : 'Xác nhận xóa'}</button><button type="button" disabled={busy} onClick={() => setConfirmId(null)}>Giữ lại</button></div>}

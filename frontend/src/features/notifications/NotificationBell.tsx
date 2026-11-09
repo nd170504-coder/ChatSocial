@@ -80,7 +80,7 @@ export function NotificationBell({ userId }: { userId: string }) {
       <div className="notifications-scroll" aria-busy={state.loading}>
         <ul className="notification-list">{state.data?.items.map(item => <li key={item.id}>
           <button className={`notification-item${item.readAt === null ? ' unread' : ''}`} type="button" disabled={busy} onClick={() => void read(item)}>
-            <Avatar name={item.actorName} src={item.actorAvatarUrl} className="notification-avatar" />
+            <Avatar userId={item.actorId} name={item.actorName} src={item.actorAvatarUrl} className="notification-avatar" />
             <span className="notification-item-body"><span><strong>{item.actorName}</strong> {notificationDescription(item)}</span><time dateTime={item.createdAt}>{postTime(item.createdAt)}</time><span className="notification-read-label">{item.readAt === null ? 'Chưa đọc' : 'Đã đọc'}</span></span>
             {item.readAt === null && <span className="notification-unread-dot" aria-hidden="true" />}
           </button>

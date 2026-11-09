@@ -53,6 +53,7 @@ class FriendRequestIntegrationTests {
     @Autowired UserRepository users;
     @Autowired UserProfileRepository profiles;
     @Autowired NotificationRepository notifications;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoSpyBean FriendRequestRepository requests;
     @Autowired PostRepository posts;
     @Autowired PostMediaRepository media;
@@ -314,6 +315,12 @@ class FriendRequestIntegrationTests {
         requests.saveAndFlush(invitation);
         User other = users.saveAndFlush(new User(null, "other@example.com", "hash", "other", UserStatus.ACTIVE, null, null));
         String otherId = send(sender, other.getId(), 201).get("id").asText();
+        // Give the fixtures distinct persisted timestamps; a fast clock may otherwise tie them.
+        var created = java.sql.Timestamp.from(java.time.Instant.parse("2020-01-01T00:00:00Z"));
+        jdbc.update("update chatsocial.friend_requests set created_at = ?, updated_at = ? where request_id = ?",
+                created, java.sql.Timestamp.from(java.time.Instant.parse("2020-01-01T00:00:01Z")), original);
+        jdbc.update("update chatsocial.friend_requests set created_at = ?, updated_at = ? where request_id = ?",
+                created, java.sql.Timestamp.from(java.time.Instant.parse("2020-01-01T00:00:02Z")), otherId);
         send(sender, recipient.getId(), 201);
         mvc.perform(get("/api/friend-requests/outgoing").param("size", "1")
                         .with(jwt().jwt(token -> token.subject(sender.getId()))))

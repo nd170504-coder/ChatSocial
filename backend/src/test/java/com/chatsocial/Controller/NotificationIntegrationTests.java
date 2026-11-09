@@ -53,12 +53,71 @@ class NotificationIntegrationTests {
     @Autowired NotificationRepository notifications;
     @Autowired AuthService auth;
     @Autowired PostService postService;
+    @Autowired com.chatsocial.service.ChatService chat;
+    @Autowired com.chatsocial.repository.FriendshipRepository friendships;
+    @Autowired com.chatsocial.service.PresenceService presence;
     @Autowired UserSessionService sessions;
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
     @Autowired WebApplicationContext context;
     @MockitoBean JavaMailSender mail;
     final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void presenceIsPrivateAndTracksMultipleConnectionsAndRevocation() throws Exception {
+        User a = user(), b = user(), stranger = user();
+        var aLogin = login(a);
+        var bLogin = login(b);
+        var strangerLogin = login(stranger);
+        var relation = friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        try (Socket first = connect(aLogin.getAccessToken());
+             Socket second = connect(bLogin.getAccessToken());
+             Socket otherTab = connect(bLogin.getAccessToken());
+             Socket outsider = connect(strangerLogin.getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/presence");
+            subscribe(second, b.getId(), "/user/queue/presence");
+            subscribe(otherTab, b.getId(), "/user/queue/presence");
+            subscribe(outsider, stranger.getId(), "/user/queue/presence");
+            assertEquals(java.util.List.of(b.getId()), presence.getOnlineFriends(a.getId()).onlineUserIds());
+            assertTrue(presence.getOnlineFriends(stranger.getId()).onlineUserIds().isEmpty());
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+            mvc.perform(get("/api/presence/friends")).andExpect(status().isUnauthorized());
+            mvc.perform(get("/api/presence/friends").with(jwt().jwt(token -> token.subject(a.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.onlineUserIds[0]").value(b.getId()))
+                    .andExpect(jsonPath("$.data.onlineUserIds.length()").value(1));
+            // Check actual scheduled WebSocket delivery, without invoking the job ourselves.
+            var frame = json.readTree(first.next().split("\n\n", 2)[1]);
+            assertEquals("PRESENCE_SNAPSHOT", frame.get("type").asText());
+            assertEquals(b.getId(), frame.get("onlineUserIds").get(0).asText());
+            var privateFrame = json.readTree(outsider.next().split("\n\n", 2)[1]);
+            assertTrue(privateFrame.get("onlineUserIds").isEmpty());
+            second.close();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (registry.getUser(b.getId()) != null && registry.getUser(b.getId()).getSessions().size() > 1
+                    && System.nanoTime() < deadline) Thread.sleep(10);
+            assertNotNull(registry.getUser(b.getId()));
+            assertEquals(1, registry.getUser(b.getId()).getSessions().size());
+            assertEquals(java.util.List.of(b.getId()), presence.getOnlineFriends(a.getId()).onlineUserIds());
+            friendships.delete(relation);
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+            friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+            // A revoked login is offline even if its underlying socket is still open.
+            sessions.logout(b.getId(), bLogin.getSessionId());
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+        }
+    }
+
+    @Test
+    void presenceGoesOfflineAfterTheLastConnectionCloses() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        try (Socket socket = connect(login(b).getAccessToken())) {
+            assertEquals(java.util.List.of(b.getId()), presence.getOnlineFriends(a.getId()).onlineUserIds());
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (!presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty() && System.nanoTime() < deadline) Thread.sleep(10);
+        assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+    }
 
     @Test
     void committedLikeIsDeliveredPrivatelyAndReadApisEnforceRecipient() throws Exception {
@@ -91,6 +150,35 @@ class NotificationIntegrationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.data.unreadCount").value(0));
             postService.deletePost(owner.getId(), post.getId());
             assertFalse(notifications.existsById(id));
+        }
+    }
+
+    @Test
+    void chatMessagesAndReadReceiptsReachBothPrivateSessionsOnce() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String conversationId = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        var input = new com.chatsocial.dto.chat.SendMessageRequest("Realtime hello", UUID.randomUUID());
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/chat");
+            subscribe(second, b.getId(), "/user/queue/chat");
+            var sent = chat.send(a.getId(), conversationId, input);
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                assertTrue(frame.startsWith("MESSAGE"), frame);
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGE_CREATED", data.get("type").asText());
+                assertEquals(sent.id(), data.get("message").get("id").asText());
+            }
+            chat.send(a.getId(), conversationId, input);
+            assertNull(first.frames.poll(200, TimeUnit.MILLISECONDS));
+            chat.markRead(b.getId(), conversationId, new com.chatsocial.dto.chat.ReadRequest(sent.id()));
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGES_READ", data.get("type").asText());
+                assertEquals(b.getId(), data.get("read").get("readerId").asText());
+            }
         }
     }
 
@@ -142,11 +230,15 @@ class NotificationIntegrationTests {
     }
 
     private void subscribe(Socket socket, String userId) throws Exception {
-        socket.send("SUBSCRIBE\nid:notifications\ndestination:/user/queue/notifications\nack:auto\n\n");
+        subscribe(socket, userId, "/user/queue/notifications");
+    }
+
+    private void subscribe(Socket socket, String userId, String destination) throws Exception {
+        socket.send("SUBSCRIBE\nid:private-test\ndestination:" + destination + "\nack:auto\n\n");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (System.nanoTime() < deadline) {
             var user = registry.getUser(userId);
-            if (user != null && user.getSessions().stream().anyMatch(session -> !session.getSubscriptions().isEmpty())) return;
+            if (user != null && user.getSessions().stream().anyMatch(session -> session.getSubscriptions().stream().anyMatch(subscription -> destination.equals(subscription.getDestination())))) return;
             Thread.sleep(10);
         }
         fail("Subscription was not registered");
