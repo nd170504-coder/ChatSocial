@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ApiError } from '../../api/client'
 import { Icon } from '../../components/ui/Icon'
@@ -6,6 +6,7 @@ import { useAuth } from '../auth/hooks/useAuth'
 import { Avatar } from '../profile/components/Avatar'
 import { validateImage } from '../profile/utils'
 import { ChatImage, LocalChatImage } from './ChatImage'
+import { RecallPopover } from './RecallPopover'
 import { useOnline } from '../presence/PresenceProvider'
 import { postTime } from '../posts/utils'
 import { chatApi } from './api'
@@ -25,7 +26,9 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const [pending, setPending] = useState<Pending[]>([])
   const [draft, setDraft] = useState('')
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
-  const [confirmRecall, setConfirmRecall] = useState<string | null>(null)
+  const [confirmRecall, setConfirmRecall] = useState<{ id: string; anchor: HTMLButtonElement } | null>(null)
+  const recallPopoverId = useId()
+  const cancelRecall = useCallback(() => setConfirmRecall(null), [])
   const [recalling, setRecalling] = useState(false)
   const [recallError, setRecallError] = useState('')
   const recallLocked = useRef(false)
@@ -212,9 +215,9 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
         </>}
         <span><time dateTime={message.createdAt}>{postTime(message.createdAt)}</time>{message.senderId === userId && !message.deletedAt && <>
           <span>{message.readByRecipient ? 'Đã đọc' : 'Đã gửi'}</span>
-          <button type="button" className="chat-recall-button" disabled={recalling} aria-label={`Thu hồi ${message.media.length ? 'ảnh' : 'tin nhắn'}: ${message.content?.slice(0, 30) || 'Ảnh đã gửi'}`} onClick={() => { setConfirmRecall(message.id); setRecallError('') }}>Thu hồi</button>
+          <button type="button" className="chat-recall-button" disabled={recalling} aria-expanded={confirmRecall?.id === message.id} aria-haspopup="dialog" aria-controls={confirmRecall?.id === message.id ? recallPopoverId : undefined} aria-label={`Thu hồi ${message.media.length ? 'ảnh' : 'tin nhắn'}: ${message.content?.slice(0, 30) || 'Ảnh đã gửi'}`} onClick={event => { const anchor = event.currentTarget; setConfirmRecall(previous => previous?.id === message.id ? null : { id: message.id, anchor }); setRecallError('') }}>Thu hồi</button>
         </>}</span>
-        {!message.deletedAt && confirmRecall === message.id && <div className="chat-recall-confirm"><span>Thu hồi tin này với cả hai người?</span><div><button type="button" disabled={recalling} onClick={() => void recall(message.id)}>{recalling ? 'Đang thu hồi…' : 'Xác nhận thu hồi'}</button><button type="button" disabled={recalling} onClick={() => setConfirmRecall(null)}>Giữ lại</button></div>{recallError && <span role="alert">{recallError}</span>}</div>}
+        {!message.deletedAt && confirmRecall?.id === message.id && <RecallPopover id={recallPopoverId} anchor={confirmRecall.anchor} busy={recalling} error={recallError} onCancel={cancelRecall} onConfirm={() => void recall(message.id)} />}
       </li>)}{pending.map(item => <li key={item.clientMessageId} className={`chat-message own pending ${item.status}`}>
         {item.file ? <LocalChatImage file={item.file} /> : <p>{item.content}</p>}
         <span>{item.status === 'sending' ? 'Đang gửi…' : 'Chưa gửi được'}</span>{item.status === 'failed' && <div className="chat-pending-error"><span>{item.error}</span><button type="button" disabled={busy || !detail?.canSend} onClick={() => void send(item)} aria-label={item.file ? 'Gửi lại ảnh' : `Gửi lại tin: ${item.content.slice(0, 30)}`}>Gửi lại</button><button type="button" disabled={busy} onClick={() => setPending(items => items.filter(previous => previous.clientMessageId !== item.clientMessageId))}>Bỏ tin chưa gửi</button></div>}</li>)}</ol>
