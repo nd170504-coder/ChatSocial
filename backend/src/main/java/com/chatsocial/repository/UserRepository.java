@@ -15,6 +15,9 @@ public interface UserRepository extends JpaRepository<User, String> {
     @Query("""
             select u from User u
             where u.status = :status and u.id <> :currentUserId
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :currentUserId and blockedPair.blocked.id = u.id)
+                   or (blockedPair.blocker.id = u.id and blockedPair.blocked.id = :currentUserId))
               and ((:emailSearch = true and u.email = :query)
                 or (:emailSearch = false and u.username like :pattern escape '!'))
             """)

@@ -89,7 +89,7 @@ public class UserController {
     @GetMapping("/{userId}/friends/count")
     @Operation(summary = "Đếm số bạn bè của người dùng")
     public ResponseEntity<ApiResponse<FriendCountResponse>> countFriends(@PathVariable("userId") String userId) {
-        FriendCountResponse response = friendService.countFriends(userId);
+        FriendCountResponse response = friendService.countFriends(SecurityUtils.getCurrentUserId(), userId);
         return ResponseEntity.ok(ApiResponse.success("Friend count retrieved successfully", response));
     }
 

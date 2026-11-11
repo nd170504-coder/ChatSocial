@@ -9,6 +9,7 @@ import { chatApi } from './api'
 
 const ChatContext = createContext<{
   status: ConnectionStatus; revision: number; connectionRevision: number
+  relationshipRevision: number; relationshipsChanged: () => void
   subscribe: (listener: (event: ChatEvent) => void) => () => void
   refresh: () => void
   hasNewMessages: boolean
@@ -16,10 +17,12 @@ const ChatContext = createContext<{
 } | null>(null)
 
 export function ChatProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const [relationshipRevision, setRelationshipRevision] = useState(0)
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [revision, setRevision] = useState(0)
   const [connectionRevision, setConnectionRevision] = useState(0)
   const [newConversations, setNewConversations] = useState(new Set<string>())
+  const relationshipsChanged = useCallback(() => { setRelationshipRevision(value => value + 1); setRevision(value => value + 1); setNewConversations(new Set()) }, [])
   const listeners = useRef(new Set<(event: ChatEvent) => void>())
   const refresh = useCallback(() => setRevision(value => value + 1), [])
   const acknowledgeRead = useCallback((id: string, unread: number) => {
@@ -45,6 +48,7 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
         if (!active) return
         const event = parseChatEvent(body)
         if (!event) return
+        if (event.type === 'RELATIONSHIP_CHANGED') { relationshipsChanged(); return }
         const version = (versions.get(event.conversationId) || 0) + 1
         versions.set(event.conversationId, version)
         if (event.type === 'MESSAGE_CREATED' && !event.message.deletedAt && event.message.senderId !== userId) {
@@ -65,8 +69,8 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
     window.addEventListener('online', online)
     document.addEventListener('visibilitychange', visible)
     return () => { active = false; connection.stop(); window.removeEventListener('online', online); document.removeEventListener('visibilitychange', visible) }
-  }, [userId, refresh, acknowledgeRead])
-  const value = useMemo(() => ({ status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, hasNewMessages: newConversations.size > 0 }), [status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, newConversations])
+  }, [userId, refresh, acknowledgeRead, relationshipsChanged])
+  const value = useMemo(() => ({ relationshipRevision, relationshipsChanged, status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, hasNewMessages: newConversations.size > 0 }), [relationshipRevision, relationshipsChanged, status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, newConversations])
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
 

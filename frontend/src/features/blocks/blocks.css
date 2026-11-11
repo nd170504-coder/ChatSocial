@@ -1,0 +1,15 @@
+.block-action { display: inline-flex; align-items: center; flex-shrink: 0; }
+.block-button { min-height: 34px; padding: 7px 11px; border: 1px solid #e4dce2; border-radius: 8px; background: #fff; color: #a05060; font: inherit; font-size: 11px; white-space: nowrap; }
+.block-button:disabled { opacity: .5; }
+.block-loading { font-size: 10px; color: #8a98ac; }
+.blocked-page { padding: 36px; max-width: 1000px; margin: 0 auto; }
+.blocked-page > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.blocked-page h1 { color: #263b59; font-size: 28px; margin: 12px 0; }
+.blocked-page p, .blocked-page a { color: #7b89a0; font-size: 12px; line-height: 1.8; }
+.blocked-list { list-style: none; padding: 0; margin: 0; }
+.blocked-list > li { display: flex; align-items: center; gap: 14px; padding: 18px; margin-bottom: 10px; border: 1px solid #e5ebf4; border-radius: 12px; background: #fff; }
+.blocked-list .blocked-avatar { width: 44px; height: 44px; border-width: 1px; font-size: 14px; flex-shrink: 0; }
+.blocked-list strong { color: #263b59; font-size: 13px; overflow-wrap: anywhere; }
+.blocked-list small { display: block; margin-top: 6px; color: #8a98ac; font-size: 11px; overflow-wrap: anywhere; }
+.blocked-list .block-action { margin-left: auto; }
+@media (max-width: 760px) { .blocked-page { padding: 24px 16px; } .blocked-page > header { align-items: flex-start; } .chat-thread-heading { gap: 8px; } }

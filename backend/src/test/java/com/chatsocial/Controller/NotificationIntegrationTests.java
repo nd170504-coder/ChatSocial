@@ -56,6 +56,7 @@ class NotificationIntegrationTests {
     @Autowired com.chatsocial.service.ChatService chat;
     @Autowired com.chatsocial.repository.FriendshipRepository friendships;
     @Autowired com.chatsocial.service.PresenceService presence;
+    @Autowired com.chatsocial.service.BlockService blocks;
     @Autowired UserSessionService sessions;
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
@@ -63,6 +64,34 @@ class NotificationIntegrationTests {
     @MockitoBean JavaMailSender mail;
     @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void blockingRefreshesBothChatsWithoutSendingABlockNotification() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String conversationId = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        chat.send(a.getId(), conversationId, new com.chatsocial.dto.chat.SendMessageRequest("History", UUID.randomUUID()));
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/chat"); subscribe(first, a.getId(), "/user/queue/notifications");
+            subscribe(second, b.getId(), "/user/queue/chat"); subscribe(second, b.getId(), "/user/queue/notifications");
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().contains(b.getId()));
+            blocks.change(a.getId(), b.getId(), true);
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("RELATIONSHIP_CHANGED", data.get("type").asText());
+                assertEquals(conversationId, data.get("conversationId").asText());
+                assertTrue(data.get("message").isNull());
+                assertNull(socket.frames.poll(250, TimeUnit.MILLISECONDS));
+            }
+            assertFalse(chat.get(b.getId(), conversationId).canSend());
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+            assertTrue(presence.getOnlineFriends(b.getId()).onlineUserIds().isEmpty());
+            blocks.change(a.getId(), b.getId(), false);
+            for (Socket socket : java.util.List.of(first, second)) assertTrue(socket.next().contains("RELATIONSHIP_CHANGED"));
+            assertFalse(chat.get(a.getId(), conversationId).canSend());
+        }
+    }
 
     @Test
     void presenceIsPrivateAndTracksMultipleConnectionsAndRevocation() throws Exception {
@@ -260,7 +289,7 @@ class NotificationIntegrationTests {
     }
 
     private void subscribe(Socket socket, String userId, String destination) throws Exception {
-        socket.send("SUBSCRIBE\nid:private-test\ndestination:" + destination + "\nack:auto\n\n");
+        socket.send("SUBSCRIBE\nid:private-test-" + destination.hashCode() + "\ndestination:" + destination + "\nack:auto\n\n");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (System.nanoTime() < deadline) {
             var user = registry.getUser(userId);

@@ -48,7 +48,7 @@ public class PostController {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success("Public posts retrieved successfully",
-                postService.getPublicPosts(page, size)));
+                postService.getPublicPosts(SecurityUtils.getCurrentUserId(), page, size)));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

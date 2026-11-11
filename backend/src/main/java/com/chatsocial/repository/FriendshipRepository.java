@@ -35,6 +35,9 @@ public interface FriendshipRepository extends JpaRepository<Friendship, String >
         select u
         from User u
         where u.status = :status
+          and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = u.id)
+                   or (blockedPair.blocker.id = u.id and blockedPair.blocked.id = :userId))
           and exists (
               select f.id
               from Friendship f
@@ -52,6 +55,9 @@ public interface FriendshipRepository extends JpaRepository<Friendship, String >
         select count(u)
         from User u
         where u.status = :status
+          and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = u.id)
+                   or (blockedPair.blocker.id = u.id and blockedPair.blocked.id = :userId))
           and exists (
               select f.id
               from Friendship f
@@ -79,6 +85,9 @@ public interface FriendshipRepository extends JpaRepository<Friendship, String >
     select u.id
     from User u
     where u.status = :status
+          and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = u.id)
+                   or (blockedPair.blocker.id = u.id and blockedPair.blocked.id = :userId))
       and exists (
           select f.id
           from Friendship f

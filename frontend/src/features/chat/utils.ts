@@ -40,6 +40,7 @@ export function parseChatEvent(body: string): ChatEvent | null {
   try {
     const event = JSON.parse(body)
     if (typeof event?.conversationId !== 'string') return null
+    if (event.type === 'RELATIONSHIP_CHANGED' && event.message === null && event.read === null) return event
     if ((event.type === 'MESSAGE_CREATED' || event.type === 'MESSAGE_RECALLED') && validMessage(event.message)
       && event.message.conversationId === event.conversationId && (event.type !== 'MESSAGE_RECALLED' || event.message.deletedAt)) return event
     const read = event.read

@@ -9,6 +9,7 @@ import { ChatImage, LocalChatImage } from './ChatImage'
 import { RecallPopover } from './RecallPopover'
 import { useOnline } from '../presence/PresenceProvider'
 import { postTime } from '../posts/utils'
+import { BlockButton } from '../blocks/BlockButton'
 import { chatApi } from './api'
 import { useChat } from './ChatProvider'
 import type { ChatMessage, ChatRead, Conversation } from './types'
@@ -69,7 +70,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   }
 
   useEffect(() => subscribe(event => {
-    if (!active.current || event.conversationId !== conversationId) return
+    if (!active.current || event.conversationId !== conversationId || event.type === 'RELATIONSHIP_CHANGED') return
     if (event.type !== 'MESSAGES_READ') {
       if (event.type === 'MESSAGE_CREATED' && !event.message.deletedAt) {
         if (event.message.senderId === userId) bottomRef.current = true
@@ -194,6 +195,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   return <section className="chat-thread" aria-label="Nội dung cuộc trò chuyện">
     <header className="chat-thread-heading"><Link to="/messages" className="chat-mobile-back" aria-label="Về danh sách tin nhắn"><Icon name="arrow" /></Link>
       {detail ? <Link className="chat-person" to={`/users/${encodeURIComponent(detail.otherUser.userId)}`}><Avatar userId={detail.otherUser.userId} name={detail.otherUser.fullName} src={detail.otherUser.avatarUrl} className="chat-avatar" /><span><strong>{detail.otherUser.fullName}</strong>{online && <small className="chat-person-online" role="status">Đang hoạt động</small>}</span></Link> : <strong>Cuộc trò chuyện</strong>}
+      {detail && <BlockButton userId={detail.otherUser.userId} fullName={detail.otherUser.fullName} />}
       <button type="button" className="chat-text-button" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Làm mới</button>
     </header>
     <div className={`chat-connection ${status}`} role="status">{status === 'connected' ? 'Đã kết nối' : status === 'connecting' ? 'Đang kết nối…' : 'Đang kết nối lại; tin đã lưu sẽ được tải bù.'}</div>

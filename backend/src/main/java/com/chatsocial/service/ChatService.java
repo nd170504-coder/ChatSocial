@@ -39,6 +39,7 @@ public class ChatService {
     private final UserProfileRepository profiles;
     private final FriendshipRepository friendships;
     private final ApplicationEventPublisher events;
+    private final BlockPolicy blockPolicy;
     private final MessageMediaRepository messageMediaRepository;
     private final SupabaseStorageService storageService;
 
@@ -76,7 +77,7 @@ public class ChatService {
             throw notFound();
         }
 
-        if (!friendships.areFriends(currentUserId, otherUserId)) {
+        if (blockPolicy.between(currentUserId, otherUserId) || !friendships.areFriends(currentUserId, otherUserId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ bạn bè mới có thể bắt đầu trò chuyện");
         }
 
@@ -328,6 +329,7 @@ public class ChatService {
 
         boolean canSend = otherMember.getLeftAt() == null
                 && other.getStatus() == UserStatus.ACTIVE
+                && !blockPolicy.between(me.getId(), other.getId())
                 && friendships.areFriends(me.getId(), other.getId());
 
         return new Context(conversation, me, other, canSend);

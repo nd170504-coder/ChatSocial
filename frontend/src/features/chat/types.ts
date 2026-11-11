@@ -25,4 +25,5 @@ export interface ChatRead {
   lastReadMessageCreatedAt: string | null; unreadCount: number
 }
 export type ChatEvent = { type: 'MESSAGE_CREATED' | 'MESSAGE_RECALLED'; conversationId: string; message: ChatMessage; read: null }
+  | { type: 'RELATIONSHIP_CHANGED'; conversationId: string; message: null; read: null }
   | { type: 'MESSAGES_READ'; conversationId: string; message: null; read: ChatRead }

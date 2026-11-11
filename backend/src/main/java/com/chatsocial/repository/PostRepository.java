@@ -16,11 +16,17 @@ import java.util.Optional;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, String> {
+    @Query("select p.user.id from Post p where p.id = :postId")
+    Optional<String> findAuthorId(@Param("postId") String postId);
+
 
     @Query("""
             select p from Post p join fetch p.user author
             where author.id <> :viewerId
               and author.status = :activeStatus
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :viewerId and blockedPair.blocked.id = author.id)
+                   or (blockedPair.blocker.id = author.id and blockedPair.blocked.id = :viewerId))
               and (p.privacy = :publicPrivacy or (
                   p.privacy = :friendsPrivacy and exists (
                       select f.id from Friendship f
@@ -37,8 +43,11 @@ public interface PostRepository extends JpaRepository<Post, String> {
     @Query("""
             select p from Post p join fetch p.user author
             where p.privacy = :privacy and author.status = :status
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :viewerId and blockedPair.blocked.id = author.id)
+                   or (blockedPair.blocker.id = author.id and blockedPair.blocked.id = :viewerId))
             """)
-    Slice<Post> findPublicPosts(@Param("privacy") PostPrivacy privacy,
+    Slice<Post> findPublicPosts(@Param("viewerId") String viewerId, @Param("privacy") PostPrivacy privacy,
                                @Param("status") UserStatus status, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -51,6 +60,9 @@ public interface PostRepository extends JpaRepository<Post, String> {
         join p.user author
         where author.id = :authorId
           and author.status = :activeStatus
+          and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :viewerId and blockedPair.blocked.id = author.id)
+                   or (blockedPair.blocker.id = author.id and blockedPair.blocked.id = :viewerId))
           and (
               author.id = :viewerId
               or p.privacy = :publicPrivacy

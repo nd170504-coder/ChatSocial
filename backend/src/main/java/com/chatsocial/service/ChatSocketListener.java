@@ -14,9 +14,14 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class ChatSocketListener {
 
     private final SimpMessagingTemplate messaging;
+    private final BlockPolicy blockPolicy;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void deliver(ChatDelivery event) {
+        var payload = event.payload();
+        String actorId = "MESSAGE_CREATED".equals(payload.type()) ? payload.message().senderId()
+                : "MESSAGES_READ".equals(payload.type()) ? payload.read().readerId() : null;
+        if (actorId != null && blockPolicy.between(event.recipientId(), actorId)) return;
         try {
             messaging.convertAndSendToUser(
                     event.recipientId(),

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
-export function RecallPopover({ id, anchor, busy, error, onCancel, onConfirm }: {
+export function RecallPopover({ id, anchor, busy, error, onCancel, onConfirm, title = 'Thu hồi tin nhắn?', description = 'Thu hồi với cả hai người.', confirmLabel = 'Thu hồi', confirmAriaLabel = 'Xác nhận thu hồi' }: {
   id: string; anchor: HTMLButtonElement; busy: boolean; error: string
   onCancel: () => void; onConfirm: () => void
+  title?: string; description?: string; confirmLabel?: string; confirmAriaLabel?: string
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
@@ -62,9 +63,9 @@ export function RecallPopover({ id, anchor, busy, error, onCancel, onConfirm }: 
   const style = { left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? 'visible' : 'hidden', '--recall-arrow': `${position?.arrow ?? 20}px` } as CSSProperties
   return createPortal(<div ref={panel} id={id} className={`chat-recall-popover ${position?.side || ''}`} style={style}
     role="dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} aria-busy={busy}>
-    <strong id={`${id}-title`}>Thu hồi tin nhắn?</strong>
-    <p id={`${id}-description`}>Thu hồi với cả hai người.</p>
+    <strong id={`${id}-title`}>{title}</strong>
+    <p id={`${id}-description`}>{description}</p>
     {error && <p className="chat-recall-error" role="alert">{error}</p>}
-    <div className="chat-recall-actions"><button ref={cancel} type="button" disabled={busy} onClick={onCancel}>Hủy</button><button className="chat-recall-primary" type="button" disabled={busy} aria-label="Xác nhận thu hồi" onClick={onConfirm}>{busy ? 'Đang thu hồi…' : 'Thu hồi'}</button></div>
+    <div className="chat-recall-actions"><button ref={cancel} type="button" disabled={busy} onClick={onCancel}>Hủy</button><button className="chat-recall-primary" type="button" disabled={busy} aria-label={confirmAriaLabel} onClick={onConfirm}>{busy ? 'Đang xử lý…' : confirmLabel}</button></div>
   </div>, document.body)
 }

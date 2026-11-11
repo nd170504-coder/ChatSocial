@@ -21,16 +21,28 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
             select n from Notification n
             join fetch n.actor
             where n.recipient.id = :userId
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = n.actor.id)
+                   or (blockedPair.blocker.id = n.actor.id and blockedPair.blocked.id = :userId))
             """)
     Slice<Notification> findForRecipient(@Param("userId") String userId, Pageable pageable);
 
-    long countByRecipientIdAndReadAtIsNull(String userId);
+    @Query("""
+        select count(n) from Notification n where n.recipient.id = :userId and n.readAt is null
+        and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = n.actor.id)
+                   or (blockedPair.blocker.id = n.actor.id and blockedPair.blocked.id = :userId))
+        """)
+    long countByRecipientIdAndReadAtIsNull(@Param("userId") String userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select n from Notification n
             where n.id = :id
               and n.recipient.id = :userId
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = n.actor.id)
+                   or (blockedPair.blocker.id = n.actor.id and blockedPair.blocked.id = :userId))
             """)
     Optional<Notification> findOwnForUpdate(@Param("id") String id, @Param("userId") String userId);
 
@@ -39,6 +51,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
             update Notification n
             set n.readAt = :now
             where n.recipient.id = :userId
+              and not exists (select blockedPair.id from UserBlock blockedPair
+                where (blockedPair.blocker.id = :userId and blockedPair.blocked.id = n.actor.id)
+                   or (blockedPair.blocker.id = n.actor.id and blockedPair.blocked.id = :userId))
               and n.readAt is null
             """)
     int markAllRead(@Param("userId") String userId, @Param("now") Instant now);

@@ -19,12 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserProfileService {
     private final UserRepository users;
+    private final BlockPolicy blockPolicy;
     private final UserProfileRepository profiles;
     private final FriendshipRepository friendships;
     private final FriendRequestRepository requests;
 
     @Transactional(readOnly = true)
     public UserProfileResponse get(String viewerId, String userId) {
+        blockPolicy.requireVisible(viewerId, userId);
         var user = users.findById(userId).filter(value -> value.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User profile not found"));
         UserProfile profile = profiles.findByUserId(userId).orElse(null);

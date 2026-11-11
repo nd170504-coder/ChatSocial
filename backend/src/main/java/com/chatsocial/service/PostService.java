@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 public class PostService {
 
     private final PostRepository postRepository;
+    private final BlockPolicy blockPolicy;
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final FriendshipRepository friendshipRepository;
@@ -179,6 +180,7 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public PostPageResponse getMyPostByUser(String currentUserId, String authorId, int page, int size) {
+        blockPolicy.requireVisible(currentUserId, authorId);
         if (page < 0 || size < 1 || size > 50) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên và size phải từ 1 đến 50");
         }
@@ -225,13 +227,13 @@ public class PostService {
     }
 
     @Transactional(readOnly = true)
-    public PostPageResponse getPublicPosts(int page, int size) {
+    public PostPageResponse getPublicPosts(String viewerId, int page, int size) {
         if (page < 0 || size < 1 || size > 50) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "page phải từ 0 trở lên và size phải từ 1 đến 50");
         }
         PageRequest pageable = PageRequest.of(page, size,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Slice<Post> posts = postRepository.findPublicPosts(PostPrivacy.PUBLIC, UserStatus.ACTIVE, pageable);
+        Slice<Post> posts = postRepository.findPublicPosts(viewerId, PostPrivacy.PUBLIC, UserStatus.ACTIVE, pageable);
         return new PostPageResponse(toResponses(posts.getContent()), posts.getNumber(),
                 posts.getSize(), posts.hasNext());
     }
@@ -276,7 +278,7 @@ public class PostService {
     private boolean canView(Post post, String currentUserId) {
         User author = post.getUser();
 
-        if (author.getStatus() != UserStatus.ACTIVE) {
+        if (blockPolicy.between(currentUserId, author.getId()) || author.getStatus() != UserStatus.ACTIVE) {
             return false;
         }
 
@@ -289,6 +291,13 @@ public class PostService {
             case FRIENDS -> friendshipRepository.areFriends(currentUserId, author.getId());
             case PRIVATE -> false;
         };
+    }
+
+    private void lockInteractionUsers(String viewerId, String postId) {
+        String authorId = postRepository.findAuthorId(postId).orElseThrow(this::postNotFound);
+        for (String id : java.util.stream.Stream.of(viewerId, authorId).distinct().sorted().toList()) {
+            userRepository.findForUpdateById(id).orElseThrow(this::postNotFound);
+        }
     }
 
     private ApiException postNotFound() {
@@ -340,6 +349,7 @@ public class PostService {
     }
 
     private Post getVisiblePostForLike(String currentUserId, String postId) {
+        lockInteractionUsers(currentUserId, postId);
         Post post = postRepository.findForUpdateById(postId)
                 .orElseThrow(this::postNotFound);
 
@@ -445,6 +455,7 @@ public class PostService {
     }
 
     private Post getPostForComment(String currentUserId, String postId, boolean forUpdate) {
+        if (forUpdate) lockInteractionUsers(currentUserId, postId);
         var result = forUpdate
                 ? postRepository.findForUpdateById(postId)
                 : postRepository.findById(postId);

@@ -32,6 +32,7 @@ public class FriendRequestService {
     private final FriendRequestRepository requests;
     private final FriendshipRepository friendships;
     private final UserRepository users;
+    private final BlockPolicy blockPolicy;
     private final UserProfileRepository profiles;
     private final NotificationService notificationService;
 
@@ -73,6 +74,7 @@ public class FriendRequestService {
         User second = activeUserForUpdate(senderFirst ? addresseeId : requesterId, requesterId);
         User requester = senderFirst ? first : second;
         User addressee = senderFirst ? second : first;
+        blockPolicy.requireVisible(requesterId, addresseeId);
 
         if (friendships.areFriends(requesterId, addresseeId)) {
             throw new ApiException(HttpStatus.CONFLICT, "Users are already friends");
@@ -157,6 +159,7 @@ public class FriendRequestService {
                 throw new ApiException(HttpStatus.NOT_FOUND, "User is unavailable");
             }
         }
+        blockPolicy.requireVisible(pair[0], pair[1]);
         return requests.findById(requestId).orElseThrow(this::requestNotFound);
     }
 
