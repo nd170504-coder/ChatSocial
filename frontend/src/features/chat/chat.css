@@ -34,6 +34,12 @@
 .chat-message > p { margin: 0; background: #fff; border: 1px solid #e5ebf4; padding: 11px 15px; border-radius: 15px 15px 15px 4px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-message.own > p { background: #2864ed; border-color: #2864ed; color: #fff; border-radius: 15px 15px 4px 15px; }
 .chat-message > span { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; color: #8a98ac; font-size: 9px; margin: 6px 3px 0; }
+.chat-message.recalled > .chat-recalled { background: transparent; border: 1px dashed #c9d2e1; color: #7e8a9e; font-style: italic; font-size: 12px; }
+.chat-recall-button { padding: 0; border: 0; background: none; color: #788ba6; font-size: inherit; }
+.chat-recall-button:hover { color: #bf5264; text-decoration: underline; }
+.chat-recall-confirm { display: flex; flex-direction: column; gap: 8px; max-width: 260px; padding: 10px; margin-top: 8px; border: 1px solid #e3e9f3; border-radius: 9px; background: #fff; color: #71819b; font-size: 11px; line-height: 1.6; }
+.chat-recall-confirm > div { display: flex; gap: 14px; }
+.chat-recall-confirm button { padding: 0; border: 0; background: none; color: var(--primary); font-size: 11px; }
 .chat-message.received > span { justify-content: flex-start; }
 .chat-message.pending > p { opacity: .65; }
 .chat-message.failed > p { border-color: #d06a7b; background: #fff2f4; color: #a23e50; opacity: 1; }

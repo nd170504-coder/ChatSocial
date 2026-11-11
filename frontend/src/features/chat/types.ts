@@ -8,6 +8,7 @@ export interface ChatMessage {
   clientMessageId: string | null
   createdAt: string
   readByRecipient: boolean
+  deletedAt: string | null
 }
 export interface Conversation {
   id: string
@@ -23,5 +24,5 @@ export interface ChatRead {
   conversationId: string; readerId: string; lastReadMessageId: string | null
   lastReadMessageCreatedAt: string | null; unreadCount: number
 }
-export type ChatEvent = { type: 'MESSAGE_CREATED'; conversationId: string; message: ChatMessage; read: null }
+export type ChatEvent = { type: 'MESSAGE_CREATED' | 'MESSAGE_RECALLED'; conversationId: string; message: ChatMessage; read: null }
   | { type: 'MESSAGES_READ'; conversationId: string; message: null; read: ChatRead }

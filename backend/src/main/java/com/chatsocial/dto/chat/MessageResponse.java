@@ -11,5 +11,6 @@ public record MessageResponse(
         String clientMessageId,
         Instant createdAt,
         boolean readByRecipient,
-        List<MessageMediaResponse> media
+        List<MessageMediaResponse> media,
+        Instant deletedAt
 ) {}

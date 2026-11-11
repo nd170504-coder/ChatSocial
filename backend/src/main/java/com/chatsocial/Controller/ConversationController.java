@@ -121,6 +121,14 @@ public class ConversationController {
                 .body(image.bytes());
     }
 
+    @DeleteMapping("/{id}/messages/{messageId}")
+    public ResponseEntity<ApiResponse<MessageResponse>> recall(
+            @PathVariable("id") String conversationId,
+            @PathVariable("messageId") String messageId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success("Message recalled", service.recall(me(), conversationId, messageId)));
+    }
+
     private String me() {
         return SecurityUtils.getCurrentUserId();
     }

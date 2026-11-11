@@ -25,6 +25,10 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const [pending, setPending] = useState<Pending[]>([])
   const [draft, setDraft] = useState('')
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [confirmRecall, setConfirmRecall] = useState<string | null>(null)
+  const [recalling, setRecalling] = useState(false)
+  const [recallError, setRecallError] = useState('')
+  const recallLocked = useRef(false)
   const imageInput = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -63,9 +67,11 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   useEffect(() => subscribe(event => {
     if (!active.current || event.conversationId !== conversationId) return
-    if (event.type === 'MESSAGE_CREATED') {
-      if (event.message.senderId === userId) bottomRef.current = true
-      else if (!bottomRef.current) setNewMessages(true)
+    if (event.type !== 'MESSAGES_READ') {
+      if (event.type === 'MESSAGE_CREATED' && !event.message.deletedAt) {
+        if (event.message.senderId === userId) bottomRef.current = true
+        else if (!bottomRef.current) setNewMessages(true)
+      }
       ingest([event.message])
     } else {
       const read = event.read
@@ -81,16 +87,16 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   useEffect(() => {
     const controller = new AbortController()
     let current = true
-    const known = new Set(messageRef.current.map(item => item.id))
-    const catchUp = initialized.current && known.size > 0
+    const oldestLoaded = messageRef.current[0]?.id
+    const catchUp = initialized.current && !!oldestLoaded
     setLoading(true); setError('')
     void (async () => {
       const [conversation, initial] = await Promise.all([chatApi.get(conversationId, controller.signal), chatApi.history(conversationId, null, controller.signal)])
       let page = initial.data
       const incoming = [...page.items]
-      // Walk back to an already loaded message, so reconnects cannot leave a gap of >20 messages.
+      // Refresh the whole loaded range, including old messages recalled while offline.
       const cursors = new Set<string>()
-      while (catchUp && page.hasNext && page.nextBefore && !page.items.some(item => known.has(item.id))) {
+      while (catchUp && page.hasNext && page.nextBefore && !page.items.some(item => item.id === oldestLoaded)) {
         if (cursors.has(page.nextBefore)) throw new Error('Repeated cursor')
         cursors.add(page.nextBefore)
         page = (await chatApi.history(conversationId, page.nextBefore, controller.signal)).data
@@ -99,6 +105,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
       if (!current) return
       setDetail(conversation.data)
       if (!initialized.current) { setBefore(initial.data.nextBefore); initialized.current = true; bottomRef.current = true }
+      else if (catchUp) setBefore(page.nextBefore)
       ingest(incoming)
       lastReadAttempt.current = null; setReadError('')
     })().catch(cause => { if (current) setError(chatError(cause)) })
@@ -117,7 +124,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   useEffect(() => {
     if (loading || !atBottom || document.visibilityState !== 'visible' || reading.current) return
-    const latest = [...messages].reverse().find(item => item.senderId !== userId && !item.readByRecipient)
+    const latest = [...messages].reverse().find(item => item.senderId !== userId && !item.deletedAt && !item.readByRecipient)
     if (!latest || lastReadAttempt.current === latest.id) return
     lastReadAttempt.current = latest.id; reading.current = true
     void chatApi.read(conversationId, latest.id).then(response => {
@@ -160,6 +167,18 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
     } finally { sending.current = false; if (active.current) setBusy(false) }
   }
 
+  async function recall(messageId: string) {
+    if (recallLocked.current) return
+    recallLocked.current = true; setRecalling(true); setRecallError('')
+    try {
+      const response = await chatApi.recall(conversationId, messageId)
+      if (active.current) { ingest([response.data]); refresh(); setConfirmRecall(null) }
+    } catch (cause) {
+      if (active.current) setRecallError(cause instanceof ApiError && cause.status === 403
+        ? 'Bạn chỉ có thể thu hồi tin nhắn của mình.' : 'Chưa thu hồi được tin nhắn. Vui lòng thử lại.')
+    } finally { recallLocked.current = false; if (active.current) setRecalling(false) }
+  }
+
   function submit() {
     const content = draft.trim()
     if ((!selectedImage && (!content || content.length > 2000)) || sending.current || !detail?.canSend || error) return
@@ -186,10 +205,16 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
       {olderError && <p className="chat-error" role="alert">{olderError}</p>}
       {loading && <p className="chat-state" role="status">Đang tải tin nhắn…</p>}
       {!loading && !error && messages.length === 0 && <div className="chat-empty"><Icon name="comment" width="36" height="36" /><h2>Bắt đầu câu chuyện</h2><p>Gửi một lời chào để kết nối với người bạn này.</p></div>}
-      <ol className="chat-message-list">{messages.map(message => <li key={message.id} className={`chat-message ${message.senderId === userId ? 'own' : 'received'}`}>
-        {message.content && <p>{message.content}</p>}
-        {message.media?.filter(media => media.mediaType === 'IMAGE').map(media => <ChatImage key={media.id} conversationId={conversationId} messageId={message.id} mediaId={media.id} />)}
-        <span><time dateTime={message.createdAt}>{postTime(message.createdAt)}</time>{message.senderId === userId && <span>{message.readByRecipient ? 'Đã đọc' : 'Đã gửi'}</span>}</span>
+      <ol className="chat-message-list">{messages.map(message => <li key={message.id} className={`chat-message ${message.senderId === userId ? 'own' : 'received'}${message.deletedAt ? ' recalled' : ''}`}>
+        {message.deletedAt ? <p className="chat-recalled">Tin nhắn đã được thu hồi</p> : <>
+          {message.content && <p>{message.content}</p>}
+          {message.media?.filter(media => media.mediaType === 'IMAGE').map(media => <ChatImage key={media.id} conversationId={conversationId} messageId={message.id} mediaId={media.id} />)}
+        </>}
+        <span><time dateTime={message.createdAt}>{postTime(message.createdAt)}</time>{message.senderId === userId && !message.deletedAt && <>
+          <span>{message.readByRecipient ? 'Đã đọc' : 'Đã gửi'}</span>
+          <button type="button" className="chat-recall-button" disabled={recalling} aria-label={`Thu hồi ${message.media.length ? 'ảnh' : 'tin nhắn'}: ${message.content?.slice(0, 30) || 'Ảnh đã gửi'}`} onClick={() => { setConfirmRecall(message.id); setRecallError('') }}>Thu hồi</button>
+        </>}</span>
+        {!message.deletedAt && confirmRecall === message.id && <div className="chat-recall-confirm"><span>Thu hồi tin này với cả hai người?</span><div><button type="button" disabled={recalling} onClick={() => void recall(message.id)}>{recalling ? 'Đang thu hồi…' : 'Xác nhận thu hồi'}</button><button type="button" disabled={recalling} onClick={() => setConfirmRecall(null)}>Giữ lại</button></div>{recallError && <span role="alert">{recallError}</span>}</div>}
       </li>)}{pending.map(item => <li key={item.clientMessageId} className={`chat-message own pending ${item.status}`}>
         {item.file ? <LocalChatImage file={item.file} /> : <p>{item.content}</p>}
         <span>{item.status === 'sending' ? 'Đang gửi…' : 'Chưa gửi được'}</span>{item.status === 'failed' && <div className="chat-pending-error"><span>{item.error}</span><button type="button" disabled={busy || !detail?.canSend} onClick={() => void send(item)} aria-label={item.file ? 'Gửi lại ảnh' : `Gửi lại tin: ${item.content.slice(0, 30)}`}>Gửi lại</button><button type="button" disabled={busy} onClick={() => setPending(items => items.filter(previous => previous.clientMessageId !== item.clientMessageId))}>Bỏ tin chưa gửi</button></div>}</li>)}</ol>

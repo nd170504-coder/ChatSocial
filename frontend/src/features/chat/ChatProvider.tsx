@@ -5,6 +5,7 @@ import { connectUserChannel, type ConnectionStatus } from '../notifications/sock
 import { notificationSocketUrl } from '../notifications/utils'
 import type { ChatEvent } from './types'
 import { parseChatEvent } from './utils'
+import { chatApi } from './api'
 
 const ChatContext = createContext<{
   status: ConnectionStatus; revision: number; connectionRevision: number
@@ -30,6 +31,7 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
   }, [])
   useEffect(() => {
     let active = true
+    const versions = new Map<string, number>()
     const connection = connectUserChannel({
       url: notificationSocketUrl(env.apiBaseUrl, window.location.href), destination: '/user/queue/chat',
       getToken: async () => {
@@ -43,10 +45,16 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
         if (!active) return
         const event = parseChatEvent(body)
         if (!event) return
-        if (event.type === 'MESSAGE_CREATED' && event.message.senderId !== userId) {
+        const version = (versions.get(event.conversationId) || 0) + 1
+        versions.set(event.conversationId, version)
+        if (event.type === 'MESSAGE_CREATED' && !event.message.deletedAt && event.message.senderId !== userId) {
           setNewConversations(previous => new Set([...previous, event.conversationId]))
         } else if (event.type === 'MESSAGES_READ' && event.read.readerId === userId) {
           acknowledgeRead(event.conversationId, event.read.unreadCount)
+        } else if (event.type === 'MESSAGE_RECALLED') {
+          void chatApi.get(event.conversationId).then(response => {
+            if (active && versions.get(event.conversationId) === version) acknowledgeRead(event.conversationId, response.data.unreadCount)
+          }).catch(() => {})
         }
         for (const listener of listeners.current) listener(event)
         refresh()

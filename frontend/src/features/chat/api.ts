@@ -2,6 +2,9 @@ import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
 import type { ChatMessage, ChatRead, Conversation, ConversationPage, MessagePage } from './types'
 
 export const chatApi = {
+  recall: (id: string, messageId: string) => authenticatedRequest<ChatMessage>(
+    `/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE', signal: AbortSignal.timeout(20_000) },
+  ),
   open: (userId: string) => authenticatedRequest<Conversation>('/conversations/direct', { method: 'POST', body: JSON.stringify({ userId }) }),
   list: (page = 0, signal?: AbortSignal) => authenticatedRequest<ConversationPage>(`/conversations?page=${page}&size=20`, { signal }),
   get: (id: string, signal?: AbortSignal) => authenticatedRequest<Conversation>(`/conversations/${encodeURIComponent(id)}`, { signal }),

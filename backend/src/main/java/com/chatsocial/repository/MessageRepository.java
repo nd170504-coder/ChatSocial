@@ -19,14 +19,13 @@ public interface MessageRepository extends JpaRepository<Message, String> {
 
     Optional<Message> findByConversationIdAndSenderIdAndClientMessageId(String conversationId, String senderId, String clientMessageId);
 
-    Optional<Message> findFirstByConversationIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(String conversationId);
+    Optional<Message> findFirstByConversationIdOrderByCreatedAtDescIdDesc(String conversationId);
 
-    Slice<Message> findByConversationIdAndDeletedAtIsNull(String conversationId, Pageable pageable);
+    Slice<Message> findByConversationId(String conversationId, Pageable pageable);
 
     @Query("""
             select m from Message m
             where m.conversation.id = :conversationId
-              and m.deletedAt is null
               and (
                   m.createdAt < :beforeTime
                   or (m.createdAt = :beforeTime and m.id < :beforeId)

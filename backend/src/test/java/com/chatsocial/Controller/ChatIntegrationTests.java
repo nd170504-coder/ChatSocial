@@ -63,6 +63,72 @@ class ChatIntegrationTests {
 
     MockMultipartFile image(byte[] bytes) { return new MockMultipartFile("file", "photo.png", "image/png", bytes); }
 
+    @Test void recallEnforcesSenderAndKeepsRedactedHistoryAndCursor() throws Exception {
+        String id = chat.openDirect(a.getId(), new OpenDirectRequest(b.getId())).id();
+        UUID key = UUID.randomUUID();
+        var first = chat.send(a.getId(), id, new SendMessageRequest("Private text", key));
+        var second = chat.send(a.getId(), id, new SendMessageRequest("Latest", UUID.randomUUID()));
+        String endpoint = "/api/conversations/" + id + "/messages/" + second.id();
+        mvc.perform(delete(endpoint)).andExpect(status().isUnauthorized());
+        mvc.perform(delete(endpoint).with(jwt().jwt(t -> t.subject(stranger.getId())))).andExpect(status().isNotFound());
+        mvc.perform(delete(endpoint).with(jwt().jwt(t -> t.subject(b.getId())))).andExpect(status().isForbidden());
+        mvc.perform(delete(endpoint).with(jwt().jwt(t -> t.subject(a.getId())))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").isEmpty()).andExpect(jsonPath("$.data.media").isEmpty())
+                .andExpect(jsonPath("$.data.deletedAt").isNotEmpty());
+        var recalled = chat.recall(a.getId(), id, second.id());
+        assertNotNull(recalled.deletedAt());
+        assertEquals(recalled.deletedAt(), chat.recall(a.getId(), id, second.id()).deletedAt());
+        var page = chat.history(b.getId(), id, null, 1);
+        assertEquals(second.id(), page.items().get(0).id()); assertNull(page.items().get(0).content());
+        assertEquals(first.id(), chat.history(b.getId(), id, page.nextBefore(), 1).items().get(0).id());
+        assertEquals(second.id(), chat.get(b.getId(), id).lastMessage().id());
+        assertNotNull(chat.list(a.getId(), 0, 20).items().get(0).lastMessage().deletedAt());
+        assertEquals(1, chat.get(b.getId(), id).unreadCount());
+        assertEquals(0, chat.markRead(b.getId(), id, new ReadRequest(second.id())).unreadCount());
+        friendService.unfriend(a.getId(), b.getId());
+        assertNotNull(chat.recall(a.getId(), id, first.id()).deletedAt());
+        assertNull(chat.history(b.getId(), id, null, 20).items().get(1).content());
+        var retry = assertThrows(ApiException.class, () -> chat.send(a.getId(), id, new SendMessageRequest("Private text", key)));
+        assertNotNull(retry);
+        // A message id from another conversation must not be recalled through this one.
+        friendships.saveAndFlush(new Friendship(a, stranger));
+        String other = chat.openDirect(a.getId(), new OpenDirectRequest(stranger.getId())).id();
+        mvc.perform(delete("/api/conversations/{id}/messages/{messageId}", other, first.id())
+                .with(jwt().jwt(t -> t.subject(a.getId())))).andExpect(status().isNotFound());
+    }
+
+    @Test void recalledImagesHaveNoMediaAndCannotBeDownloadedOrRetriedAsNew() throws Exception {
+        String id = chat.openDirect(a.getId(), new OpenDirectRequest(b.getId())).id();
+        UUID key = UUID.randomUUID();
+        var sent = chat.sendImage(a.getId(), id, key, image(PNG));
+        String imageUrl = sent.media().get(0).url();
+        mvc.perform(get(imageUrl).with(jwt().jwt(t -> t.subject(b.getId())))).andExpect(status().isOk());
+        clearInvocations(storage);
+        var recalled = chat.recall(a.getId(), id, sent.id());
+        assertNull(recalled.content()); assertTrue(recalled.media().isEmpty()); assertNotNull(recalled.deletedAt());
+        mvc.perform(get(imageUrl).with(jwt().jwt(t -> t.subject(a.getId())))).andExpect(status().isNotFound());
+        mvc.perform(get(imageUrl).with(jwt().jwt(t -> t.subject(b.getId())))).andExpect(status().isNotFound());
+        verify(storage, never()).downloadPostImage(anyString());
+        assertTrue(chat.history(b.getId(), id, null, 20).items().get(0).media().isEmpty());
+        assertEquals(0, chat.get(b.getId(), id).unreadCount());
+        mvc.perform(multipart("/api/conversations/{id}/images", id).file(image(PNG)).param("clientMessageId", key.toString())
+                .with(jwt().jwt(t -> t.subject(a.getId())))).andExpect(status().isConflict());
+    }
+
+    @Test void simultaneousRecallRetriesReturnTheSameTombstone() throws Exception {
+        String id = chat.openDirect(a.getId(), new OpenDirectRequest(b.getId())).id();
+        var sent = chat.send(a.getId(), id, new SendMessageRequest("Only once", UUID.randomUUID()));
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            var first = pool.submit(() -> { start.await(); return chat.recall(a.getId(), id, sent.id()); });
+            var second = pool.submit(() -> { start.await(); return chat.recall(a.getId(), id, sent.id()); });
+            start.countDown();
+            assertEquals(first.get(10, TimeUnit.SECONDS).deletedAt(), second.get(10, TimeUnit.SECONDS).deletedAt());
+            assertEquals(1, chat.history(b.getId(), id, null, 20).items().size());
+        } finally { pool.shutdownNow(); }
+    }
+
     @Test void imagesArePrivateRetryableAndIncludedInHistoryAndReadReceipts() throws Exception {
         String id = chat.openDirect(a.getId(), new OpenDirectRequest(b.getId())).id();
         UUID key = UUID.randomUUID();

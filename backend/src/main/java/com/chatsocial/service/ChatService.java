@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -132,7 +133,7 @@ public class ChatService {
         );
 
         var result = before == null
-                ? messages.findByConversationIdAndDeletedAtIsNull(conversationId, pageable)
+                ? messages.findByConversationId(conversationId, pageable)
                 : messages.findBefore(conversationId, anchor(conversationId, before).getCreatedAt(), before, pageable);
 
         var items = result.getContent().stream()
@@ -200,6 +201,22 @@ public class ChatService {
                 null
         ));
 
+        return response;
+    }
+
+    @Transactional
+    public MessageResponse recall(String currentUserId, String conversationId, String messageId) {
+        Context ctx = context(currentUserId, conversationId, true);
+        Message message = anchor(conversationId, messageId);
+        if (!message.getSender().getId().equals(currentUserId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ được thu hồi tin nhắn của mình");
+        }
+        // Retry is harmless and must not send duplicate socket events.
+        if (message.getDeletedAt() != null) return toMessage(message, ctx);
+        message.setDeletedAt(Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
+        messages.flush();
+        MessageResponse response = toMessage(message, ctx);
+        broadcast(ctx, new ChatEvent("MESSAGE_RECALLED", conversationId, response, null));
         return response;
     }
 
@@ -322,7 +339,7 @@ public class ChatService {
         UserProfile profile = profiles.findByUserId(other.getId())
                 .orElse(null);
 
-        Message last = messages.findFirstByConversationIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(ctx.conversation().getId())
+        Message last = messages.findFirstByConversationIdOrderByCreatedAtDescIdDesc(ctx.conversation().getId())
                 .orElse(null);
 
         return new ConversationResponse(
@@ -453,6 +470,11 @@ public class ChatService {
     }
 
     private MessageResponse toMessage(Message message, Context context) {
+        if (message.getDeletedAt() != null) {
+            return new MessageResponse(message.getId(), message.getConversation().getId(),
+                    message.getSender().getId(), null, message.getClientMessageId(),
+                    message.getCreatedAt(), false, List.of(), message.getDeletedAt());
+        }
         String recipientId = message.getSender().getId()
                 .equals(context.me().getId())
                 ? context.other().getId()
@@ -482,7 +504,8 @@ public class ChatService {
                 message.getClientMessageId(),
                 message.getCreatedAt(),
                 read,
-                media
+                media,
+                null
         );
     }
 

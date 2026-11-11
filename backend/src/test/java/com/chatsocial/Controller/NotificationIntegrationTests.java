@@ -192,6 +192,19 @@ class NotificationIntegrationTests {
                 assertTrue(data.get("message").get("content").isNull());
                 assertEquals("IMAGE", data.get("message").get("media").get(0).get("mediaType").asText());
             }
+            chat.recall(a.getId(), conversationId, image.id());
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGE_RECALLED", data.get("type").asText());
+                assertEquals(image.id(), data.get("message").get("id").asText());
+                assertTrue(data.get("message").get("content").isNull());
+                assertTrue(data.get("message").get("media").isEmpty());
+                assertFalse(data.get("message").get("deletedAt").isNull());
+            }
+            chat.recall(a.getId(), conversationId, image.id());
+            assertNull(first.frames.poll(200, TimeUnit.MILLISECONDS));
+            assertNull(second.frames.poll(200, TimeUnit.MILLISECONDS));
         }
     }
 

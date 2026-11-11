@@ -3,7 +3,7 @@ import { applyRead, compareMessages, mergeMessages, parseChatEvent } from '../sr
 import type { ChatMessage, ChatRead } from '../src/features/chat/types'
 
 afterEach(() => vi.unstubAllGlobals())
-const message = (id: string, createdAt: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, conversationId: 'chat-1', senderId: 'sender', content: 'Hello', media: [], clientMessageId: 'client-1', createdAt, readByRecipient: false, ...extra })
+const message = (id: string, createdAt: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, conversationId: 'chat-1', senderId: 'sender', content: 'Hello', media: [], deletedAt: null, clientMessageId: 'client-1', createdAt, readByRecipient: false, ...extra })
 
 it('merges REST and WebSocket messages once, preserves read state and sorts sub-millisecond timestamps', () => {
   const first = message('z', '2026-11-09T00:00:00Z', { readByRecipient: true })
@@ -41,6 +41,20 @@ it('accepts image-only socket messages and rejects empty or malformed media', ()
   expect(parseChatEvent(JSON.stringify({ ...event, message: { ...item, media: [{}] } }))).toBeNull()
   expect(mergeMessages([item], [item])).toHaveLength(1)
   expect(mergeMessages([item], [item])[0].media).toEqual(item.media)
+})
+
+it('keeps recalls redacted when delayed history/send replies and read events arrive', () => {
+  const original = message('one', '2026-11-12T00:00:00Z', { media: [{ id: 'photo', url: '/private', mediaType: 'IMAGE' }] })
+  const recalled = { ...original, content: null, media: [], deletedAt: '2026-11-12T00:01:00Z' }
+  const event = { type: 'MESSAGE_RECALLED', conversationId: 'chat-1', message: recalled, read: null }
+  expect(parseChatEvent(JSON.stringify(event))).toEqual(event)
+  expect(parseChatEvent(JSON.stringify({ ...event, message: original }))).toBeNull()
+  expect(parseChatEvent(JSON.stringify({ ...event, message: { ...recalled, content: 'leaked' } }))).toBeNull()
+  const merged = mergeMessages(mergeMessages([original], [recalled]), [original])
+  expect(merged).toHaveLength(1)
+  expect(merged[0]).toMatchObject({ content: null, media: [], deletedAt: recalled.deletedAt })
+  expect(applyRead(merged, { conversationId: 'chat-1', readerId: 'reader', lastReadMessageId: original.id,
+    lastReadMessageCreatedAt: original.createdAt, unreadCount: 0 })[0]).toMatchObject({ content: null, media: [] })
 })
 
 it('sends image form-data with a stable retry id and loads private images with JWT', async () => {
@@ -92,6 +106,7 @@ it('uses all six chat endpoints, explicit send ids, cursors and JWT authenticati
   await chatApi.history('chat/id', 'before/id', signal)
   await chatApi.send('chat/id', 'Hello', 'same-client-id')
   await chatApi.read('chat/id', 'message-id')
+  await chatApi.recall('chat/id', 'message/id')
   const calls = fetchMock.mock.calls
   expect(String(calls[1][0])).toMatch(/\/conversations\/direct$/)
   expect(JSON.parse(calls[1][1]?.body as string)).toEqual({ userId: 'other' })
@@ -103,5 +118,7 @@ it('uses all six chat endpoints, explicit send ids, cursors and JWT authenticati
   expect(JSON.parse(calls[5][1]?.body as string)).toEqual({ content: 'Hello', clientMessageId: 'same-client-id' })
   expect(calls[6][1]?.method).toBe('PUT')
   expect(JSON.parse(calls[6][1]?.body as string)).toEqual({ lastReadMessageId: 'message-id' })
+  expect(String(calls[7][0])).toMatch(/\/conversations\/chat%2Fid\/messages\/message%2Fid$/)
+  expect(calls[7][1]?.method).toBe('DELETE')
   for (const [, options] of calls.slice(1)) expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
 })
