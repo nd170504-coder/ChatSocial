@@ -25,7 +25,9 @@ export function applyRead(messages: ChatMessage[], read: ChatRead) {
 }
 function validMessage(item: ChatMessage) {
   return item && typeof item.id === 'string' && typeof item.conversationId === 'string' && typeof item.senderId === 'string'
-    && typeof item.content === 'string' && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+    && (typeof item.content === 'string' || item.content === null) && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+    && Array.isArray(item.media) && item.media.every(media => media && typeof media.id === 'string' && typeof media.url === 'string' && ['IMAGE', 'VIDEO'].includes(media.mediaType))
+    && (!!item.content?.trim() || item.media.length > 0)
     && (item.clientMessageId === null || typeof item.clientMessageId === 'string') && typeof item.readByRecipient === 'boolean'
 }
 export function parseChatEvent(body: string): ChatEvent | null {
@@ -47,6 +49,8 @@ export function chatError(cause: unknown) {
     if (cause.status === 404) return 'Cuộc trò chuyện hoặc tin nhắn không còn khả dụng.'
     if (cause.status === 409) return 'Mã gửi tin đã được sử dụng cho nội dung khác.'
     if (cause.status === 400) return 'Hãy kiểm tra nội dung tin nhắn, tối đa 2.000 ký tự.'
+    if (cause.status === 413) return 'Ảnh không được lớn hơn 5 MB.'
+    if (cause.status === 415) return 'Vui lòng chọn ảnh JPEG, PNG hoặc WebP hợp lệ.'
   }
   return 'Chưa thể kết nối máy chủ. Vui lòng thử lại.'
 }

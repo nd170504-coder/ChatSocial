@@ -2,23 +2,32 @@ package com.chatsocial.service;
 
 import com.chatsocial.dto.chat.*;
 import com.chatsocial.entity.*;
+import com.chatsocial.enums.MediaType;
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.event.ChatDelivery;
 import com.chatsocial.exception.ApiException;
 import com.chatsocial.repository.*;
+import com.chatsocial.utils.ProfileImageValidator;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ChatService {
 
     private final ConversationRepository conversations;
@@ -29,6 +38,8 @@ public class ChatService {
     private final UserProfileRepository profiles;
     private final FriendshipRepository friendships;
     private final ApplicationEventPublisher events;
+    private final MessageMediaRepository messageMediaRepository;
+    private final SupabaseStorageService storageService;
 
     @Transactional
     public ConversationResponse openDirect(String currentUserId, OpenDirectRequest request) {
@@ -160,7 +171,9 @@ public class ChatService {
                 .orElse(null);
 
         if (existing != null) {
-            if (existing.getDeletedAt() != null || !Objects.equals(existing.getContent(), content)) {
+            if (existing.getDeletedAt() != null
+                    || messageMediaRepository.existsByMessageId(existing.getId())
+                    || !Objects.equals(existing.getContent(), content)) {
                 throw new ApiException(HttpStatus.CONFLICT, "clientMessageId đã được sử dụng cho tin khác");
             }
 
@@ -331,13 +344,135 @@ public class ChatService {
         );
     }
 
-    private MessageResponse toMessage(Message message, Context ctx) {
+    @Transactional
+    public MessageResponse sendImage(String currentUserId, String conversationId, UUID clientMessageId, MultipartFile file) {
+        Context context = context(currentUserId, conversationId, true);
+
+        var image = ProfileImageValidator.validate(file);
+
+        String clientId = clientMessageId.toString();
+
+        Message existing = messages.findByConversationIdAndSenderIdAndClientMessageId(conversationId, currentUserId, clientId)
+                .orElse(null);
+
+        if (existing != null) {
+            var media = messageMediaRepository.findByMessageIdOrderByIdAsc(existing.getId());
+
+            boolean imageMessage = existing.getDeletedAt() == null
+                    && existing.getContent() == null
+                    && media.size() == 1
+                    && media.get(0).getMediaType() == MediaType.IMAGE;
+
+            if (!imageMessage) {
+                throw clientMessageConflict();
+            }
+
+            var storedImage = storageService.downloadPostImage(media.get(0).getMediaUrl());
+
+            if (!Arrays.equals(image.bytes(), storedImage.bytes())) {
+                throw clientMessageConflict();
+            }
+
+            return toMessage(existing, context);
+        }
+
+        if (!context.canSend()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Hai người hiện không thể gửi tin cho nhau");
+        }
+
+        String path = storageService.newPostPath(currentUserId, image);
+
+        cleanupImageOnRollback(path);
+        storageService.uploadPostImage(path, image);
+
+        Message message = messages.saveAndFlush(
+                new Message(
+                        context.conversation,
+                        context.me,
+                        null,
+                        clientId
+                )
+        );
+        messageMediaRepository.saveAndFlush(new MessageMedia(message, path));
+
+        context.conversation.touch();
+        conversations.flush();
+
+        MessageResponse response = toMessage(message, context);
+
+        broadcast(context, new ChatEvent(
+                "MESSAGE_CREATED",
+                conversationId,
+                response,
+                null
+        ));
+        return response;
+    }
+
+    @Transactional(readOnly = true)
+    public SupabaseStorageService.DownloadedImage getImage(String currentUserId, String conversationId, String messageId, String mediaId) {
+        context(currentUserId, conversationId, false);
+
+        Message message = anchor(conversationId, messageId);
+
+        if (message.getDeletedAt() != null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy ảnh");
+        }
+
+        MessageMedia messageMedia = messageMediaRepository.findByIdAndMessageId(mediaId, messageId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy ảnh"));
+
+        if (messageMedia.getMediaType() != MediaType.IMAGE) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy ảnh");
+        }
+
+        return storageService.downloadPostImage(messageMedia.getMediaUrl());
+    }
+
+    private ApiException clientMessageConflict() {
+        return new ApiException(HttpStatus.CONFLICT, "clientMessageId đã được sử dụng cho tin khác");
+    }
+
+    private void cleanupImageOnRollback(String path) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == STATUS_ROLLED_BACK) {
+                            try {
+                                storageService.deletePostImage(path);
+                            } catch (RuntimeException exception) {
+                                log.warn("Could not clean up chat image {}", path, exception);
+                            }
+                        } else if (status == STATUS_UNKNOWN) {
+                            log.warn("Unknown chat transaction outcome for image {}", path);
+                        }
+                    }
+                }
+        );
+    }
+
+    private MessageResponse toMessage(Message message, Context context) {
         String recipientId = message.getSender().getId()
-                .equals(ctx.me().getId())
-                ? ctx.other().getId()
-                : ctx.me().getId();
+                .equals(context.me().getId())
+                ? context.other().getId()
+                : context.me().getId();
 
         boolean read = reads.existsById(new MessageReadId(message.getId(), recipientId));
+
+        var media = messageMediaRepository.findByMessageIdOrderByIdAsc(message.getId())
+                .stream()
+                .map(item -> new MessageMediaResponse(
+                        item.getId(),
+                        "/api/conversations/"
+                                + message.getConversation().getId()
+                                + "/messages/"
+                                + message.getId()
+                                + "/media/"
+                                + item.getId(),
+                        item.getMediaType()
+                ))
+                .toList();
 
         return new MessageResponse(
                 message.getId(),
@@ -346,7 +481,8 @@ public class ChatService {
                 message.getContent(),
                 message.getClientMessageId(),
                 message.getCreatedAt(),
-                read
+                read,
+                media
         );
     }
 

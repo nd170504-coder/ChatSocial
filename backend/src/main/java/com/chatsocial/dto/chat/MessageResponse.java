@@ -1,6 +1,7 @@
 package com.chatsocial.dto.chat;
 
 import java.time.Instant;
+import java.util.List;
 
 public record MessageResponse(
         String id,
@@ -9,5 +10,6 @@ public record MessageResponse(
         String content,
         String clientMessageId,
         Instant createdAt,
-        boolean readByRecipient
+        boolean readByRecipient,
+        List<MessageMediaResponse> media
 ) {}

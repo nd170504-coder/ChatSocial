@@ -1,8 +1,10 @@
+export interface ChatMedia { id: string; url: string; mediaType: 'IMAGE' | 'VIDEO' }
 export interface ChatMessage {
   id: string
   conversationId: string
   senderId: string
-  content: string
+  content: string | null
+  media: ChatMedia[]
   clientMessageId: string | null
   createdAt: string
   readByRecipient: boolean

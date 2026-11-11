@@ -3,7 +3,7 @@ import { applyRead, compareMessages, mergeMessages, parseChatEvent } from '../sr
 import type { ChatMessage, ChatRead } from '../src/features/chat/types'
 
 afterEach(() => vi.unstubAllGlobals())
-const message = (id: string, createdAt: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, conversationId: 'chat-1', senderId: 'sender', content: 'Hello', clientMessageId: 'client-1', createdAt, readByRecipient: false, ...extra })
+const message = (id: string, createdAt: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, conversationId: 'chat-1', senderId: 'sender', content: 'Hello', media: [], clientMessageId: 'client-1', createdAt, readByRecipient: false, ...extra })
 
 it('merges REST and WebSocket messages once, preserves read state and sorts sub-millisecond timestamps', () => {
   const first = message('z', '2026-11-09T00:00:00Z', { readByRecipient: true })
@@ -31,6 +31,47 @@ it('rejects malformed events and accepts chat messages and read receipts', () =>
   expect(parseChatEvent(JSON.stringify({ ...event, message: { ...item, createdAt: 'bad' } }))).toBeNull()
   expect(parseChatEvent('bad-json')).toBeNull()
   expect(parseChatEvent(JSON.stringify({ type: 'MESSAGES_READ', conversationId: 'chat-1', message: null, read: { conversationId: 'chat-1', readerId: 'reader', lastReadMessageId: 'one', lastReadMessageCreatedAt: item.createdAt, unreadCount: 0 } }))?.type).toBe('MESSAGES_READ')
+})
+
+it('accepts image-only socket messages and rejects empty or malformed media', () => {
+  const item = message('photo', '2026-11-12T00:00:00Z', { content: null, media: [{ id: 'media-1', url: '/api/conversations/chat-1/messages/photo/media/media-1', mediaType: 'IMAGE' }] })
+  const event = { type: 'MESSAGE_CREATED', conversationId: 'chat-1', message: item, read: null }
+  expect(parseChatEvent(JSON.stringify(event))).toEqual(event)
+  expect(parseChatEvent(JSON.stringify({ ...event, message: { ...item, media: [] } }))).toBeNull()
+  expect(parseChatEvent(JSON.stringify({ ...event, message: { ...item, media: [{}] } }))).toBeNull()
+  expect(mergeMessages([item], [item])).toHaveLength(1)
+  expect(mergeMessages([item], [item])[0].media).toEqual(item.media)
+})
+
+it('sends image form-data with a stable retry id and loads private images with JWT', async () => {
+  vi.resetModules()
+  const fetchMock = vi.fn<typeof fetch>()
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { accessToken: 'access', refreshToken: 'refresh', user: { id: 'viewer' } } })))
+  const { authStore } = await import('../src/features/auth/session')
+  await authStore.login({ email: 'viewer@example.com', password: 'Password123!' })
+  const { chatApi } = await import('../src/features/chat/api')
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ success: true, data: null })))
+  const file = new File(['image bytes'], 'photo.png', { type: 'image/png' })
+  await chatApi.sendImage('chat/id', file, 'retry-id')
+  await chatApi.sendImage('chat/id', file, 'retry-id')
+  for (const [url, options] of fetchMock.mock.calls.slice(1)) {
+    expect(String(url)).toMatch(/\/conversations\/chat%2Fid\/images$/)
+    expect(options?.method).toBe('POST')
+    const body = options?.body as FormData
+    expect(body.get('clientMessageId')).toBe('retry-id')
+    expect((body.get('file') as File).name).toBe('photo.png')
+    expect(new Headers(options?.headers).has('Content-Type')).toBe(false)
+    expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
+  }
+  fetchMock.mockResolvedValueOnce(new Response(new Blob(['private'], { type: 'image/png' }), { headers: { 'Content-Type': 'image/png' } }))
+  const signal = new AbortController().signal
+  expect((await chatApi.image('chat/id', 'message/id', 'media/id', signal)).type).toBe('image/png')
+  const [url, options] = fetchMock.mock.calls.at(-1)!
+  expect(String(url)).toMatch(/\/conversations\/chat%2Fid\/messages\/message%2Fid\/media\/media%2Fid$/)
+  expect(options?.signal).toBe(signal)
+  expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')
 })
 
 it('uses all six chat endpoints, explicit send ids, cursors and JWT authentication', async () => {

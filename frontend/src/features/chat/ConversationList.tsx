@@ -38,7 +38,7 @@ export function ConversationList({ selected }: { selected?: string }) {
     <div className="chat-conversation-scroll">
       <ul className="chat-conversation-list">{data?.items.map(item => <li key={item.id}><Link to={`/messages/${encodeURIComponent(item.id)}`} className={`chat-conversation${item.id === selected ? ' selected' : ''}`} aria-current={item.id === selected ? 'page' : undefined}>
         <Avatar userId={item.otherUser.userId} name={item.otherUser.fullName} src={item.otherUser.avatarUrl} className="chat-avatar" />
-        <span className="chat-conversation-copy"><strong>{item.otherUser.fullName}</strong><span>{item.lastMessage?.content || 'Bắt đầu cuộc trò chuyện'}</span><small>{item.lastMessage ? postTime(item.lastMessage.createdAt) : 'Chưa có tin nhắn'}</small></span>
+        <span className="chat-conversation-copy"><strong>{item.otherUser.fullName}</strong><span>{item.lastMessage?.content || (item.lastMessage?.media?.length ? 'Đã gửi một ảnh' : 'Bắt đầu cuộc trò chuyện')}</span><small>{item.lastMessage ? postTime(item.lastMessage.createdAt) : 'Chưa có tin nhắn'}</small></span>
         {item.unreadCount > 0 && <span className="chat-unread" aria-label={`${item.unreadCount} tin chưa đọc`}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
       </Link></li>)}</ul>
       {loading && <p className="chat-state" role="status">Đang tải cuộc trò chuyện…</p>}

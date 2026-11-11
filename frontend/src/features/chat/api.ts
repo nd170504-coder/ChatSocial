@@ -1,4 +1,4 @@
-import { authenticatedRequest } from '../auth/session'
+import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
 import type { ChatMessage, ChatRead, Conversation, ConversationPage, MessagePage } from './types'
 
 export const chatApi = {
@@ -13,5 +13,16 @@ export const chatApi = {
   ),
   read: (id: string, lastReadMessageId: string) => authenticatedRequest<ChatRead>(
     `/conversations/${encodeURIComponent(id)}/read`, { method: 'PUT', body: JSON.stringify({ lastReadMessageId }) },
+  ),
+  sendImage: (id: string, file: File, clientMessageId: string) => {
+    const body = new FormData()
+    body.append('clientMessageId', clientMessageId)
+    body.append('file', file)
+    return authenticatedRequest<ChatMessage>(`/conversations/${encodeURIComponent(id)}/images`, {
+      method: 'POST', body, signal: AbortSignal.timeout(60_000),
+    })
+  },
+  image: (conversationId: string, messageId: string, mediaId: string, signal?: AbortSignal) => authenticatedBlobRequest(
+    `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/media/${encodeURIComponent(mediaId)}`, { signal },
   ),
 }

@@ -61,6 +61,7 @@ class NotificationIntegrationTests {
     @Autowired SimpUserRegistry registry;
     @Autowired WebApplicationContext context;
     @MockitoBean JavaMailSender mail;
+    @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
 
     @Test
@@ -178,6 +179,18 @@ class NotificationIntegrationTests {
                 var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
                 assertEquals("MESSAGES_READ", data.get("type").asText());
                 assertEquals(b.getId(), data.get("read").get("readerId").asText());
+            }
+            org.mockito.Mockito.when(storage.newPostPath(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(a.getId() + "/posts/" + UUID.randomUUID() + ".png");
+            var image = chat.sendImage(a.getId(), conversationId, UUID.randomUUID(),
+                    new org.springframework.mock.web.MockMultipartFile("file", "image.png", "image/png", new byte[]{(byte)137,80,78,71,13,10,26,10,1}));
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGE_CREATED", data.get("type").asText());
+                assertEquals(image.id(), data.get("message").get("id").asText());
+                assertTrue(data.get("message").get("content").isNull());
+                assertEquals("IMAGE", data.get("message").get("media").get(0).get("mediaType").asText());
             }
         }
     }

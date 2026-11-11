@@ -4,6 +4,8 @@ import { ApiError } from '../../api/client'
 import { Icon } from '../../components/ui/Icon'
 import { useAuth } from '../auth/hooks/useAuth'
 import { Avatar } from '../profile/components/Avatar'
+import { validateImage } from '../profile/utils'
+import { ChatImage, LocalChatImage } from './ChatImage'
 import { useOnline } from '../presence/PresenceProvider'
 import { postTime } from '../posts/utils'
 import { chatApi } from './api'
@@ -11,7 +13,7 @@ import { useChat } from './ChatProvider'
 import type { ChatMessage, ChatRead, Conversation } from './types'
 import { applyRead, chatError, compareMessages, mergeMessages } from './utils'
 
-type Pending = { clientMessageId: string; content: string; status: 'sending' | 'failed'; error?: string }
+type Pending = { clientMessageId: string; content: string; file?: File; status: 'sending' | 'failed'; error?: string }
 
 export function ChatThread({ conversationId }: { conversationId: string }) {
   const { session } = useAuth()
@@ -22,6 +24,8 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pending, setPending] = useState<Pending[]>([])
   const [draft, setDraft] = useState('')
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const imageInput = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sendError, setSendError] = useState('')
@@ -144,7 +148,9 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
     setPending(previous => [...previous.filter(previousItem => previousItem.clientMessageId !== item.clientMessageId), { ...item, status: 'sending', error: undefined }])
     bottomRef.current = true; setAtBottom(true)
     try {
-      const response = await chatApi.send(conversationId, item.content, item.clientMessageId)
+      const response = item.file
+        ? await chatApi.sendImage(conversationId, item.file, item.clientMessageId)
+        : await chatApi.send(conversationId, item.content, item.clientMessageId)
       if (active.current) { ingest([response.data]); refresh() }
     } catch (cause) {
       if (!active.current || acknowledged.current.has(item.clientMessageId)) return
@@ -156,9 +162,11 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   function submit() {
     const content = draft.trim()
-    if (!content || content.length > 2000 || sending.current || !detail?.canSend) return
-    const item: Pending = { content, clientMessageId: crypto.randomUUID(), status: 'sending' }
-    setDraft(''); void send(item)
+    if ((!selectedImage && (!content || content.length > 2000)) || sending.current || !detail?.canSend || error) return
+    const item: Pending = { content: selectedImage ? '' : content, file: selectedImage || undefined, clientMessageId: crypto.randomUUID(), status: 'sending' }
+    if (selectedImage) setSelectedImage(null)
+    else setDraft('')
+    void send(item)
   }
 
   return <section className="chat-thread" aria-label="Nội dung cuộc trò chuyện">
@@ -179,19 +187,31 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
       {loading && <p className="chat-state" role="status">Đang tải tin nhắn…</p>}
       {!loading && !error && messages.length === 0 && <div className="chat-empty"><Icon name="comment" width="36" height="36" /><h2>Bắt đầu câu chuyện</h2><p>Gửi một lời chào để kết nối với người bạn này.</p></div>}
       <ol className="chat-message-list">{messages.map(message => <li key={message.id} className={`chat-message ${message.senderId === userId ? 'own' : 'received'}`}>
-        <p>{message.content}</p><span><time dateTime={message.createdAt}>{postTime(message.createdAt)}</time>{message.senderId === userId && <span>{message.readByRecipient ? 'Đã đọc' : 'Đã gửi'}</span>}</span>
-      </li>)}{pending.map(item => <li key={item.clientMessageId} className={`chat-message own pending ${item.status}`}><p>{item.content}</p><span>{item.status === 'sending' ? 'Đang gửi…' : 'Chưa gửi được'}</span>{item.status === 'failed' && <div className="chat-pending-error"><span>{item.error}</span><button type="button" disabled={busy || !detail?.canSend} onClick={() => void send(item)} aria-label={`Gửi lại tin: ${item.content.slice(0, 30)}`}>Gửi lại</button></div>}</li>)}</ol>
+        {message.content && <p>{message.content}</p>}
+        {message.media?.filter(media => media.mediaType === 'IMAGE').map(media => <ChatImage key={media.id} conversationId={conversationId} messageId={message.id} mediaId={media.id} />)}
+        <span><time dateTime={message.createdAt}>{postTime(message.createdAt)}</time>{message.senderId === userId && <span>{message.readByRecipient ? 'Đã đọc' : 'Đã gửi'}</span>}</span>
+      </li>)}{pending.map(item => <li key={item.clientMessageId} className={`chat-message own pending ${item.status}`}>
+        {item.file ? <LocalChatImage file={item.file} /> : <p>{item.content}</p>}
+        <span>{item.status === 'sending' ? 'Đang gửi…' : 'Chưa gửi được'}</span>{item.status === 'failed' && <div className="chat-pending-error"><span>{item.error}</span><button type="button" disabled={busy || !detail?.canSend} onClick={() => void send(item)} aria-label={item.file ? 'Gửi lại ảnh' : `Gửi lại tin: ${item.content.slice(0, 30)}`}>Gửi lại</button><button type="button" disabled={busy} onClick={() => setPending(items => items.filter(previous => previous.clientMessageId !== item.clientMessageId))}>Bỏ tin chưa gửi</button></div>}</li>)}</ol>
     </div>
     {newMessages && <button className="chat-new-messages" type="button" onClick={() => { bottomRef.current = true; setAtBottom(true); setNewMessages(false); if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight }}>Tin nhắn mới ↓</button>}
     {readError && <p className="chat-error" role="alert">Chưa cập nhật được trạng thái đọc. <button type="button" onClick={() => { lastReadAttempt.current = null; setReadCycle(value => value + 1) }}>Thử lại</button></p>}
     {sendError && <p className="chat-error" role="alert">{sendError}</p>}
     {detail && !detail.canSend && <p className="chat-readonly" role="status">Hiện không thể gửi tin. Lịch sử cuộc trò chuyện vẫn được giữ lại.</p>}
     <form className="chat-composer" onSubmit={event => { event.preventDefault(); submit() }}>
+      <input ref={imageInput} type="file" className="chat-input-label" tabIndex={-1} aria-label="Chọn ảnh gửi trong chat" accept="image/jpeg,image/png,image/webp" disabled={busy || !detail?.canSend || !!error} onChange={event => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+        try { validateImage(file); setSelectedImage(file); setSendError('') }
+        catch (cause) { setSelectedImage(null); setSendError(cause instanceof Error ? cause.message : 'Ảnh không hợp lệ.') }
+      }} />
+      {selectedImage && <div className="chat-selected-image"><LocalChatImage file={selectedImage} /><span>{selectedImage.name}<small>Ảnh sẽ được gửi thành một tin riêng.</small></span><button type="button" className="icon-button" aria-label="Bỏ ảnh đã chọn" disabled={busy} onClick={() => setSelectedImage(null)}><Icon name="close" /></button></div>}
       <label htmlFor={`chat-input-${conversationId}`} className="chat-input-label">Tin nhắn</label>
-      <textarea id={`chat-input-${conversationId}`} rows={2} maxLength={2000} value={draft} disabled={busy || !detail?.canSend || !!error} placeholder={detail?.canSend ? 'Nhập tin nhắn…' : 'Không thể gửi tin lúc này'} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
+      <textarea id={`chat-input-${conversationId}`} rows={2} maxLength={2000} value={draft} disabled={busy || !!selectedImage || !detail?.canSend || !!error} placeholder={detail?.canSend ? 'Nhập tin nhắn…' : 'Không thể gửi tin lúc này'} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit() }
       }} />
-      <div><span>{draft.length.toLocaleString('vi-VN')}/2.000</span><button type="submit" className="chat-send" aria-label="Gửi tin nhắn" disabled={busy || !draft.trim() || !detail?.canSend || !!error}><Icon name="send" /></button></div>
+      <div><button type="button" className="chat-attach" aria-label="Thêm ảnh vào tin nhắn" title="JPEG, PNG, WebP · tối đa 5 MB" disabled={busy || !detail?.canSend || !!error} onClick={() => imageInput.current?.click()}><Icon name="camera" />Thêm ảnh</button><span>{draft.length.toLocaleString('vi-VN')}/2.000</span><button type="submit" className="chat-send" aria-label={selectedImage ? 'Gửi ảnh' : 'Gửi tin nhắn'} disabled={busy || (!selectedImage && !draft.trim()) || !detail?.canSend || !!error}><Icon name="send" /></button></div>
     </form>
   </section>
 }
