@@ -28,6 +28,8 @@ export interface UserProfile {
   avatarUrl: string | null
   coverUrl: string | null
   bio: string | null
+  dateOfBirth: string | null
+  gender: Gender | null
   relationship: ProfileRelationship
   friendRequestId?: string | null
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router'
+import { Link, Navigate, useLocation, useParams } from 'react-router'
 import { ApiError } from '../../../api/client'
 import { useAuth } from '../../auth/hooks/useAuth'
 import { PostSection } from '../../posts/components/PostSection'
@@ -9,6 +9,8 @@ import { BlockButton } from '../../blocks/BlockButton'
 import { StartChatButton } from '../../chat/StartChatButton'
 import { profileApi } from '../api'
 import { Avatar } from '../components/Avatar'
+import { ProfileTabs } from '../components/ProfileTabs'
+import { ProfileAbout } from '../components/ProfileAbout'
 import type { UserProfile } from '../types'
 import '../profile.css'
 
@@ -25,6 +27,7 @@ function UserProfileView({ userId }: { userId: string }) {
 }
 
 function UserProfileContent({ userId, onRefresh }: { userId: string; onRefresh: () => void }) {
+  const about = useLocation().hash === '#about'
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -53,10 +56,11 @@ function UserProfileContent({ userId, onRefresh }: { userId: string; onRefresh: 
         ? <img src={profile.coverUrl} alt={`Ảnh bìa của ${profile.fullName}`} onError={() => setFailedCover(true)} />
         : <div className="default-cover" aria-hidden="true"><span className="cover-orbit orbit-one" /><span className="cover-orbit orbit-two" /><span className="cover-caption">YOUR STORY, YOUR SPACE.</span><span className="cover-star">✳</span></div>}</div>
       <div className="profile-identity"><div className="avatar-editor"><Avatar userId={profile.userId} name={profile.fullName} src={profile.avatarUrl} /></div><div className="identity-text"><h2>{profile.fullName}</h2><p>@{profile.username}</p><FriendCount key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} /></div><div className="visitor-profile-actions"><BlockButton userId={profile.userId} fullName={profile.fullName} />{profile.relationship === 'FRIENDS' && <StartChatButton userId={profile.userId} />}<FriendRequestAction profile={profile} onUpdated={setProfile} onBusyChange={setSendingRequest} /></div></div>
-      <nav className="profile-section-nav" aria-label="Nội dung hồ sơ"><a href="#posts">Bài viết</a><a href="#about">Giới thiệu</a></nav>
+      <ProfileTabs />
     </section>
-    <section id="about" className="profile-card"><div className="profile-card-heading"><h2>Giới thiệu</h2></div><p className="profile-bio">{profile.bio || 'Người dùng chưa thêm lời giới thiệu.'}</p></section>
-    <p className="visitor-visibility-note">{profile.relationship === 'FRIENDS' ? 'Bạn có thể xem bài công khai và bài dành cho bạn bè.' : 'Bạn đang xem các bài viết công khai.'}</p>
-    <PostSection key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} name={profile.fullName} avatarUrl={profile.avatarUrl} readOnly />
+    {about ? <ProfileAbout profile={profile} /> : <>
+      <p className="visitor-visibility-note">{profile.relationship === 'FRIENDS' ? 'Bạn có thể xem bài công khai và bài dành cho bạn bè.' : 'Bạn đang xem các bài viết công khai.'}</p>
+      <PostSection key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} name={profile.fullName} avatarUrl={profile.avatarUrl} readOnly />
+    </>}
   </main>
 }

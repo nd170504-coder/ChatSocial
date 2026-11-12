@@ -55,6 +55,7 @@
 .profile-tab::after { content: ''; position: absolute; bottom: 0; left: 30px; height: 2px; width: 88px; border-radius: 2px; background: #1552f5; }
 .profile-tab svg { width: 16px; height: 16px; }
 .profile-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.profile-private-label { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 400; color: #8b98aa; }
 .profile-card { border: 1px solid #e6ebf3; border-radius: 14px; background: #fff; padding: 26px; }
 .profile-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 22px; }
 .profile-card-heading h2 { font-size: 15px; letter-spacing: -.2px; margin: 0; }

@@ -63,9 +63,13 @@ describe('Authenticated multipart upload', () => {
     const response = (data: unknown) => new Response(JSON.stringify({ success: true, message: 'OK', data }))
     fetchMock.mockResolvedValueOnce(response({ accessToken: 'access', refreshToken: 'refresh', user: { id: 'viewer' } }))
     await authStore.login({ email: 'viewer@example.com', password: 'password123' })
-    fetchMock.mockResolvedValueOnce(response({ userId: 'author', username: 'author', relationship: 'NONE' }))
+    fetchMock.mockResolvedValueOnce(response({ userId: 'author', username: 'author', relationship: 'NONE', dateOfBirth: '2000-01-01', gender: 'OTHER' }))
     const controller = new AbortController()
-    expect((await profileApi.getUser('author', controller.signal)).data.relationship).toBe('NONE')
+    const profile = (await profileApi.getUser('author', controller.signal)).data
+    expect(profile.relationship).toBe('NONE')
+    expect(profile.dateOfBirth).toBe('2000-01-01')
+    expect(profile.gender).toBe('OTHER')
+    expect(profile).not.toHaveProperty('email')
     const [url, options] = fetchMock.mock.calls[1]
     expect(String(url)).toMatch(/\/users\/author\/profile$/)
     expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer access')

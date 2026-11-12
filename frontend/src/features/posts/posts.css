@@ -8,7 +8,8 @@
 .feed-intro { font-size: 12px; color: #7b89a0; line-height: 1.8; margin: 0; }
 .feed-page .posts-section { margin-top: 24px; }
 .profile-section-nav a { display: flex; align-items: center; gap: 8px; padding: 17px 0; font-size: 12px; font-weight: 600; }
-.profile-section-nav a:first-child { border-bottom: 2px solid var(--primary); }
+.profile-section-nav a { border-bottom: 2px solid transparent; }
+.profile-section-nav a[aria-current="page"] { border-bottom-color: var(--primary); color: var(--primary); }
 .profile-section-nav svg { width: 16px; height: 16px; }
 .posts-section { width: min(100%, 760px); margin: 36px auto 0; scroll-margin-top: 24px; }
 .posts-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }

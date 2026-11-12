@@ -147,8 +147,8 @@ class PostIntegrationTests {
                 .andExpect(jsonPath("$.data.fullName").value("Minh Anh"))
                 .andExpect(jsonPath("$.data.coverUrl").value("/cover.png"))
                 .andExpect(jsonPath("$.data.email").doesNotExist())
-                .andExpect(jsonPath("$.data.dateOfBirth").doesNotExist())
-                .andExpect(jsonPath("$.data.gender").doesNotExist());
+                .andExpect(jsonPath("$.data.dateOfBirth").value("2000-01-01"))
+                .andExpect(jsonPath("$.data.gender").value("OTHER"));
         mvc.perform(get(postsUrl).with(jwt().jwt(token -> token.subject(viewer.getId()))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value(publicId));
