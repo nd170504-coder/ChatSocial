@@ -57,6 +57,7 @@ class NotificationIntegrationTests {
     @Autowired com.chatsocial.repository.FriendshipRepository friendships;
     @Autowired com.chatsocial.service.PresenceService presence;
     @Autowired com.chatsocial.service.BlockService blocks;
+    @Autowired com.chatsocial.service.FriendService friendService;
     @Autowired UserSessionService sessions;
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
@@ -64,6 +65,56 @@ class NotificationIntegrationTests {
     @MockitoBean JavaMailSender mail;
     @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void typingIsPrivateAuthenticatesSenderAndDoesNotCreateMessages() throws Exception {
+        User a = user(), b = user(), outsider = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String id = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken());
+             Socket third = connect(login(outsider).getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/typing");
+            subscribe(second, b.getId(), "/user/queue/typing");
+            subscribe(third, outsider.getId(), "/user/queue/typing");
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true,\"userId\":\"" + outsider.getId() + "\"}");
+            var event = json.readTree(second.next().split("\n\n", 2)[1]);
+            assertEquals(id, event.get("conversationId").asText());
+            assertEquals(a.getId(), event.get("userId").asText());
+            assertTrue(event.get("typing").asBoolean());
+            assertNull(first.frames.poll(250, TimeUnit.MILLISECONDS));
+            assertNull(third.frames.poll(250, TimeUnit.MILLISECONDS));
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":false}");
+            assertFalse(json.readTree(second.next().split("\n\n", 2)[1]).get("typing").asBoolean());
+            third.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            friendService.unfriend(a.getId(), b.getId());
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            assertTrue(chat.history(b.getId(), id, null, 20).items().isEmpty());
+            assertEquals(0, chat.get(b.getId(), id).unreadCount());
+        }
+    }
+
+    @Test
+    void typingRejectsBrokerSendsAndDoesNotDeliverAfterBlocking() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String id = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken())) {
+            subscribe(second, b.getId(), "/user/queue/typing");
+            blocks.change(a.getId(), b.getId(), true);
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            first.send("SEND\ndestination:/queue/typing\ncontent-type:application/json\n\n{}");
+            assertTrue(first.next().startsWith("ERROR"));
+            assertNull(second.frames.poll(250, TimeUnit.MILLISECONDS));
+        }
+    }
 
     @Test
     void replyNotificationReachesParentAuthorOverWebSocket() throws Exception {
@@ -151,6 +202,62 @@ class NotificationIntegrationTests {
             // A revoked login is offline even if its underlying socket is still open.
             sessions.logout(b.getId(), bLogin.getSessionId());
             assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+        }
+    }
+
+    @Test
+    void lastSeenPersistsAfterTheFinalTabClosesAndIsOnlySharedWithFriends() throws Exception {
+        User viewer = user(), friend = user(), unknown = user(), stranger = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(viewer, friend));
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(viewer, unknown));
+        var oldTime = java.time.Instant.parse("2026-01-01T00:00:00Z");
+        users.updateLastSeen(java.util.Set.of(friend.getId()), oldTime);
+        assertEquals(oldTime, presence.getOnlineFriends(viewer.getId()).friends().stream()
+                .filter(item -> item.userId().equals(friend.getId())).findFirst().orElseThrow().lastSeenAt());
+        assertNull(presence.getOnlineFriends(viewer.getId()).friends().stream()
+                .filter(item -> item.userId().equals(unknown.getId())).findFirst().orElseThrow().lastSeenAt());
+        assertTrue(presence.getOnlineFriends(stranger.getId()).friends().isEmpty());
+        var friendLogin = login(friend);
+        try (Socket observer = connect(login(viewer).getAccessToken());
+             Socket firstTab = connect(friendLogin.getAccessToken());
+             Socket secondTab = connect(friendLogin.getAccessToken())) {
+            subscribe(observer, viewer.getId(), "/user/queue/presence");
+            var online = presence.getOnlineFriends(viewer.getId()).friends().stream()
+                    .filter(item -> item.userId().equals(friend.getId())).findFirst().orElseThrow();
+            assertTrue(online.online()); assertNull(online.lastSeenAt());
+            firstTab.close();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (registry.getUser(friend.getId()).getSessions().size() > 1 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId()));
+            var closingAt = java.time.Instant.now().minusMillis(10);
+            secondTab.close();
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            java.time.Instant saved;
+            do {
+                saved = users.findById(friend.getId()).orElseThrow().getLastSeenAt();
+                if (!presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId())
+                        && saved != null && !saved.isBefore(closingAt)) break;
+                Thread.sleep(10);
+            } while (System.nanoTime() < deadline);
+            assertNotNull(saved); assertFalse(saved.isBefore(closingAt));
+            assertFalse(presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId()));
+            assertEquals(0, users.updateLastSeen(java.util.Set.of(friend.getId()), oldTime));
+            observer.frames.clear();
+            presence.broadcastPresence();
+            var snapshot = json.readTree(observer.next().split("\n\n", 2)[1]);
+            var friendNode = java.util.stream.StreamSupport.stream(snapshot.get("friends").spliterator(), false)
+                    .filter(item -> item.get("userId").asText().equals(friend.getId())).findFirst().orElseThrow();
+            assertFalse(friendNode.get("online").asBoolean());
+            assertNotNull(friendNode.get("lastSeenAt").asText());
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+            mvc.perform(get("/api/presence/friends").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.friends.length()").value(2))
+                    .andExpect(jsonPath("$.data.friends[*].email").isEmpty());
+            blocks.change(viewer.getId(), friend.getId(), true);
+            assertFalse(presence.getOnlineFriends(viewer.getId()).friends().stream().anyMatch(item -> item.userId().equals(friend.getId())));
+            assertTrue(presence.getOnlineFriends(friend.getId()).friends().isEmpty());
+            friendService.unfriend(viewer.getId(), unknown.getId());
+            assertTrue(presence.getOnlineFriends(viewer.getId()).friends().isEmpty());
         }
     }
 

@@ -7,11 +7,12 @@ import { Avatar } from '../profile/components/Avatar'
 import { validateImage } from '../profile/utils'
 import { ChatImage, LocalChatImage } from './ChatImage'
 import { RecallPopover } from './RecallPopover'
-import { useOnline } from '../presence/PresenceProvider'
+import { PresenceStatus } from '../presence/PresenceStatus'
 import { postTime } from '../posts/utils'
 import { BlockButton } from '../blocks/BlockButton'
 import { chatApi } from './api'
 import { useChat } from './ChatProvider'
+import { useTyping } from './useTyping'
 import type { ChatMessage, ChatRead, Conversation } from './types'
 import { applyRead, chatError, compareMessages, mergeMessages } from './utils'
 
@@ -22,7 +23,6 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const userId = session!.user.id
   const { status, connectionRevision, subscribe, refresh, acknowledgeRead } = useChat()
   const [detail, setDetail] = useState<Conversation | null>(null)
-  const online = useOnline(detail?.otherUser.userId)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pending, setPending] = useState<Pending[]>([])
   const [draft, setDraft] = useState('')
@@ -55,6 +55,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
   const frontiers = useRef(new Map<string, ChatRead>())
   const lastReadAttempt = useRef<string | null>(null)
   const olderController = useRef<AbortController | null>(null)
+  const typing = useTyping(conversationId, detail?.otherUser.userId, !!detail?.canSend && !loading && !error)
 
   useEffect(() => { active.current = true; return () => { active.current = false; olderController.current?.abort() } }, [])
   useLayoutEffect(() => { messageRef.current = messages }, [messages])
@@ -124,7 +125,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
       element.scrollTop = prepend.current.top + element.scrollHeight - prepend.current.height
       prepend.current = null
     } else if (bottomRef.current) element.scrollTop = element.scrollHeight
-  }, [messages, pending])
+  }, [messages, pending, typing.incoming])
 
   useEffect(() => {
     if (loading || !atBottom || document.visibilityState !== 'visible' || reading.current) return
@@ -155,6 +156,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   async function send(item: Pending) {
     if (sending.current || !detail?.canSend) return
+    typing.stop()
     sending.current = true; setBusy(true); setSendError('')
     setPending(previous => [...previous.filter(previousItem => previousItem.clientMessageId !== item.clientMessageId), { ...item, status: 'sending', error: undefined }])
     bottomRef.current = true; setAtBottom(true)
@@ -194,7 +196,7 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
 
   return <section className="chat-thread" aria-label="Nội dung cuộc trò chuyện">
     <header className="chat-thread-heading"><Link to="/messages" className="chat-mobile-back" aria-label="Về danh sách tin nhắn"><Icon name="arrow" /></Link>
-      {detail ? <Link className="chat-person" to={`/users/${encodeURIComponent(detail.otherUser.userId)}`}><Avatar userId={detail.otherUser.userId} name={detail.otherUser.fullName} src={detail.otherUser.avatarUrl} className="chat-avatar" /><span><strong>{detail.otherUser.fullName}</strong>{online && <small className="chat-person-online" role="status">Đang hoạt động</small>}</span></Link> : <strong>Cuộc trò chuyện</strong>}
+      {detail ? <Link className="chat-person" to={`/users/${encodeURIComponent(detail.otherUser.userId)}`}><Avatar userId={detail.otherUser.userId} name={detail.otherUser.fullName} src={detail.otherUser.avatarUrl} className="chat-avatar" /><span><strong>{detail.otherUser.fullName}</strong><PresenceStatus userId={detail.otherUser.userId} enabled={detail.canSend && !error} /></span></Link> : <strong>Cuộc trò chuyện</strong>}
       {detail && <BlockButton userId={detail.otherUser.userId} fullName={detail.otherUser.fullName} />}
       <button type="button" className="chat-text-button" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Làm mới</button>
     </header>
@@ -228,17 +230,18 @@ export function ChatThread({ conversationId }: { conversationId: string }) {
     {readError && <p className="chat-error" role="alert">Chưa cập nhật được trạng thái đọc. <button type="button" onClick={() => { lastReadAttempt.current = null; setReadCycle(value => value + 1) }}>Thử lại</button></p>}
     {sendError && <p className="chat-error" role="alert">{sendError}</p>}
     {detail && !detail.canSend && <p className="chat-readonly" role="status">Hiện không thể gửi tin. Lịch sử cuộc trò chuyện vẫn được giữ lại.</p>}
+    {typing.incoming && <div className="chat-typing" role="status"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span><span>{detail?.otherUser.fullName} đang nhập…</span></div>}
     <form className="chat-composer" onSubmit={event => { event.preventDefault(); submit() }}>
       <input ref={imageInput} type="file" className="chat-input-label" tabIndex={-1} aria-label="Chọn ảnh gửi trong chat" accept="image/jpeg,image/png,image/webp" disabled={busy || !detail?.canSend || !!error} onChange={event => {
         const file = event.target.files?.[0]
         event.target.value = ''
         if (!file) return
-        try { validateImage(file); setSelectedImage(file); setSendError('') }
+        try { validateImage(file); typing.stop(); setSelectedImage(file); setSendError('') }
         catch (cause) { setSelectedImage(null); setSendError(cause instanceof Error ? cause.message : 'Ảnh không hợp lệ.') }
       }} />
       {selectedImage && <div className="chat-selected-image"><LocalChatImage file={selectedImage} /><span>{selectedImage.name}<small>Ảnh sẽ được gửi thành một tin riêng.</small></span><button type="button" className="icon-button" aria-label="Bỏ ảnh đã chọn" disabled={busy} onClick={() => setSelectedImage(null)}><Icon name="close" /></button></div>}
       <label htmlFor={`chat-input-${conversationId}`} className="chat-input-label">Tin nhắn</label>
-      <textarea id={`chat-input-${conversationId}`} rows={2} maxLength={2000} value={draft} disabled={busy || !!selectedImage || !detail?.canSend || !!error} placeholder={detail?.canSend ? 'Nhập tin nhắn…' : 'Không thể gửi tin lúc này'} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
+      <textarea id={`chat-input-${conversationId}`} rows={2} maxLength={2000} value={draft} disabled={busy || !!selectedImage || !detail?.canSend || !!error} placeholder={detail?.canSend ? 'Nhập tin nhắn…' : 'Không thể gửi tin lúc này'} onChange={event => { setDraft(event.target.value); typing.input(event.target.value) }} onBlur={typing.stop} onKeyDown={event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit() }
       }} />
       <div><button type="button" className="chat-attach" aria-label="Thêm ảnh vào tin nhắn" title="JPEG, PNG, WebP · tối đa 5 MB" disabled={busy || !detail?.canSend || !!error} onClick={() => imageInput.current?.click()}><Icon name="camera" />Thêm ảnh</button><span>{draft.length.toLocaleString('vi-VN')}/2.000</span><button type="submit" className="chat-send" aria-label={selectedImage ? 'Gửi ảnh' : 'Gửi tin nhắn'} disabled={busy || (!selectedImage && !draft.trim()) || !detail?.canSend || !!error}><Icon name="send" /></button></div>
