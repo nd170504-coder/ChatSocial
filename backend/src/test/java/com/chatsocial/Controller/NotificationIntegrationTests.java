@@ -57,6 +57,7 @@ class NotificationIntegrationTests {
     @Autowired com.chatsocial.repository.FriendshipRepository friendships;
     @Autowired com.chatsocial.service.PresenceService presence;
     @Autowired com.chatsocial.service.BlockService blocks;
+    @Autowired com.chatsocial.service.FriendService friendService;
     @Autowired UserSessionService sessions;
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
@@ -64,6 +65,56 @@ class NotificationIntegrationTests {
     @MockitoBean JavaMailSender mail;
     @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void typingIsPrivateAuthenticatesSenderAndDoesNotCreateMessages() throws Exception {
+        User a = user(), b = user(), outsider = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String id = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken());
+             Socket third = connect(login(outsider).getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/typing");
+            subscribe(second, b.getId(), "/user/queue/typing");
+            subscribe(third, outsider.getId(), "/user/queue/typing");
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true,\"userId\":\"" + outsider.getId() + "\"}");
+            var event = json.readTree(second.next().split("\n\n", 2)[1]);
+            assertEquals(id, event.get("conversationId").asText());
+            assertEquals(a.getId(), event.get("userId").asText());
+            assertTrue(event.get("typing").asBoolean());
+            assertNull(first.frames.poll(250, TimeUnit.MILLISECONDS));
+            assertNull(third.frames.poll(250, TimeUnit.MILLISECONDS));
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":false}");
+            assertFalse(json.readTree(second.next().split("\n\n", 2)[1]).get("typing").asBoolean());
+            third.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            friendService.unfriend(a.getId(), b.getId());
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            assertTrue(chat.history(b.getId(), id, null, 20).items().isEmpty());
+            assertEquals(0, chat.get(b.getId(), id).unreadCount());
+        }
+    }
+
+    @Test
+    void typingRejectsBrokerSendsAndDoesNotDeliverAfterBlocking() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String id = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken())) {
+            subscribe(second, b.getId(), "/user/queue/typing");
+            blocks.change(a.getId(), b.getId(), true);
+            first.send("SEND\ndestination:/app/chat/typing\ncontent-type:application/json\n\n"
+                    + "{\"conversationId\":\"" + id + "\",\"typing\":true}");
+            assertNull(second.frames.poll(500, TimeUnit.MILLISECONDS));
+            first.send("SEND\ndestination:/queue/typing\ncontent-type:application/json\n\n{}");
+            assertTrue(first.next().startsWith("ERROR"));
+            assertNull(second.frames.poll(250, TimeUnit.MILLISECONDS));
+        }
+    }
 
     @Test
     void replyNotificationReachesParentAuthorOverWebSocket() throws Exception {

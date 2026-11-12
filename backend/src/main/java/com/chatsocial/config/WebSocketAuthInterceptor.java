@@ -80,7 +80,16 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
             throw new BadCredentialsException("WebSocket is not authenticated");
         }
 
-        authenticate(authentication.getToken().getTokenValue());
+        JwtAuthenticationToken currentAuthentication = authenticate(authentication.getToken().getTokenValue());
+
+        accessor.setUser(currentAuthentication);
+
+        if (command == StompCommand.SEND) {
+            if (!"/app/chat/typing".equals(accessor.getDestination())) {
+                throw new AccessDeniedException("Send destination is not allowed");
+            }
+            return message;
+        }
 
         if (command == StompCommand.SUBSCRIBE) {
             String destination = accessor.getDestination();
@@ -88,8 +97,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
             boolean allowed =
                     "/user/queue/notifications".equals(destination)
                             || "/user/queue/chat".equals(destination)
-                            || "/user/queue/presence".equals(destination);
-
+                            || "/user/queue/presence".equals(destination)
+                            || "/user/queue/typing".equals(destination);
             if (!allowed) {
                 throw new AccessDeniedException(
                         "Subscription is not allowed"

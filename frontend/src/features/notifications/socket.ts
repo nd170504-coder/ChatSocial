@@ -23,12 +23,14 @@ export function connectUserChannel(options: {
   destination: '/user/queue/notifications' | '/user/queue/chat' | '/user/queue/presence'
   getToken: () => Promise<string>
   onMessage: (body: string) => void
+  onTyping?: (body: string) => void
   onReady: () => void
   onStatus: (status: ConnectionStatus) => void
 }) {
   let stopped = false
   let generation = 0
   let client: Client | null = null
+  let ready = false
   let retry: ReturnType<typeof setTimeout> | undefined
   let renewal: ReturnType<typeof setTimeout> | undefined
 
@@ -41,6 +43,7 @@ export function connectUserChannel(options: {
   async function connect() {
     if (stopped) return
     const started = ++generation
+    ready = false
     clearTimeout(retry); retry = undefined
     clearTimeout(renewal)
     const previous = client
@@ -68,6 +71,10 @@ export function connectUserChannel(options: {
           if (!isCurrent()) return
           options.onMessage(message.body)
         })
+        if (options.onTyping) current.subscribe('/user/queue/typing', message => {
+          if (isCurrent()) options.onTyping?.(message.body)
+        })
+        ready = true
         options.onStatus('connected')
         options.onReady()
         const expiresAt = tokenExpiresAt(token)
@@ -77,9 +84,9 @@ export function connectUserChannel(options: {
           renewal = setTimeout(() => { if (isCurrent()) void connect() }, Math.max(1000, remaining - margin))
         }
       }
-      current.onWebSocketClose = () => { if (isCurrent()) { clearTimeout(renewal); schedule() } }
-      current.onStompError = () => { if (isCurrent()) { current.forceDisconnect(); schedule() } }
-      current.onWebSocketError = () => { if (isCurrent()) options.onStatus('reconnecting') }
+      current.onWebSocketClose = () => { if (isCurrent()) { ready = false; clearTimeout(renewal); schedule() } }
+      current.onStompError = () => { if (isCurrent()) { ready = false; current.forceDisconnect(); schedule() } }
+      current.onWebSocketError = () => { if (isCurrent()) { ready = false; options.onStatus('reconnecting') } }
       current.activate()
     } catch {
       if (!stopped && generation === started) schedule()
@@ -88,9 +95,17 @@ export function connectUserChannel(options: {
 
   void connect()
   return {
+    sendTyping: (conversationId: string, typing: boolean) => {
+      // Typing is temporary: never queue or replay it after reconnecting.
+      if (stopped || !ready || !client || !options.onTyping) return false
+      try {
+        client.publish({ destination: '/app/chat/typing', body: JSON.stringify({ conversationId, typing }) })
+        return true
+      } catch { return false }
+    },
     reconnect: () => { void connect() },
     stop: () => {
-      stopped = true; generation++
+      stopped = true; ready = false; generation++
       clearTimeout(retry); clearTimeout(renewal)
       const previous = client; client = null
       if (previous) void previous.deactivate({ force: true }).catch(() => {})

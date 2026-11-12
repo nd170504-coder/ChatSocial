@@ -14,6 +14,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -42,6 +43,7 @@ public class ChatService {
     private final BlockPolicy blockPolicy;
     private final MessageMediaRepository messageMediaRepository;
     private final SupabaseStorageService storageService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
     public ConversationResponse openDirect(String currentUserId, OpenDirectRequest request) {
@@ -446,6 +448,29 @@ public class ChatService {
         }
 
         return storageService.downloadPostImage(messageMedia.getMediaUrl());
+    }
+
+    @Transactional(readOnly = true)
+    public void typing(String currentUserId, String conversationId, boolean typing) {
+        var context = context(currentUserId, conversationId, false);
+
+        if (!context.canSend()) {
+            return;
+        }
+
+        String recipientId = context.other.getId();
+
+        TypingEvent event = new TypingEvent(
+                conversationId,
+                currentUserId,
+                typing
+        );
+
+        messagingTemplate.convertAndSendToUser(
+                recipientId,
+                "/queue/typing",
+                event
+        );
     }
 
     private ApiException clientMessageConflict() {
