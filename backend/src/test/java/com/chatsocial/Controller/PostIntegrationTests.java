@@ -76,6 +76,59 @@ class PostIntegrationTests {
     }
 
     @Test
+    void personalStatisticsCountAllPrivacyLevelsAndOnlyReceivedInteractions() throws Exception {
+        User other = user("other"), inactive = user("inactive"), blocked = user("blocked");
+        inactive.setStatus(UserStatus.DISABLED); users.saveAndFlush(inactive);
+        friendships.saveAndFlush(new Friendship(author, other));
+        friendships.saveAndFlush(new Friendship(inactive, author));
+        friendships.saveAndFlush(new Friendship(author, blocked));
+        blocks.saveAndFlush(new com.chatsocial.entity.UserBlock(author, blocked));
+        Post publicPost = posts.saveAndFlush(Post.builder().user(author).content("Public").privacy(PostPrivacy.PUBLIC).build());
+        posts.saveAndFlush(Post.builder().user(author).content("Friends").privacy(PostPrivacy.FRIENDS).build());
+        Post privatePost = posts.saveAndFlush(Post.builder().user(author).content("Private").privacy(PostPrivacy.PRIVATE).build());
+        Post otherPost = posts.saveAndFlush(Post.builder().user(other).content("Other").privacy(PostPrivacy.PUBLIC).build());
+        likes.saveAndFlush(new com.chatsocial.entity.PostLike(publicPost, other));
+        likes.saveAndFlush(new com.chatsocial.entity.PostLike(privatePost, other));
+        likes.saveAndFlush(new com.chatsocial.entity.PostLike(publicPost, author));
+        likes.saveAndFlush(new com.chatsocial.entity.PostLike(otherPost, author));
+        var root = comments.saveAndFlush(new com.chatsocial.entity.Comment(null, publicPost, author, null, "Own root", null, null));
+        var reply = comments.saveAndFlush(new com.chatsocial.entity.Comment(null, publicPost, other, root, "Received reply", null, null));
+        comments.saveAndFlush(new com.chatsocial.entity.Comment(null, privatePost, other, null, "Received root", null, null));
+        comments.saveAndFlush(new com.chatsocial.entity.Comment(null, publicPost, author, root, "Own reply", null, null));
+        comments.saveAndFlush(new com.chatsocial.entity.Comment(null, publicPost, inactive, null, "Hidden", null, null));
+        String url = "/api/users/me/statistics";
+        mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        mvc.perform(get(url).with(jwt().jwt(t -> t.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.postCount").value(3))
+                .andExpect(jsonPath("$.data.friendCount").value(1))
+                .andExpect(jsonPath("$.data.receivedLikeCount").value(2))
+                .andExpect(jsonPath("$.data.receivedCommentCount").value(2));
+        // A supplied userId cannot switch whose private totals are returned.
+        mvc.perform(get(url).param("userId", author.getId()).with(jwt().jwt(t -> t.subject(other.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.postCount").value(1))
+                .andExpect(jsonPath("$.data.receivedLikeCount").value(1))
+                .andExpect(jsonPath("$.data.receivedCommentCount").value(0));
+        likes.deleteById(likes.findAll().stream().filter(like -> like.getPost().getId().equals(publicPost.getId())
+                && like.getUser().getId().equals(other.getId())).findFirst().orElseThrow().getId());
+        comments.deleteById(reply.getId());
+        mvc.perform(get(url).with(jwt().jwt(t -> t.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.receivedLikeCount").value(1))
+                .andExpect(jsonPath("$.data.receivedCommentCount").value(1));
+    }
+
+    @Test
+    void personalStatisticsReturnZerosAndRejectInactiveAccounts() throws Exception {
+        mvc.perform(get("/api/users/me/statistics").with(jwt().jwt(t -> t.subject(author.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.postCount").value(0))
+                .andExpect(jsonPath("$.data.friendCount").value(0))
+                .andExpect(jsonPath("$.data.receivedLikeCount").value(0))
+                .andExpect(jsonPath("$.data.receivedCommentCount").value(0));
+        author.setStatus(UserStatus.DISABLED); users.saveAndFlush(author);
+        mvc.perform(get("/api/users/me/statistics").with(jwt().jwt(t -> t.subject(author.getId()))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void visitorProfileAndPostsFollowActualFriendshipAndProtectPrivateMedia() throws Exception {
         profiles.saveAndFlush(new UserProfile(null, author, "Minh Anh", "/avatar.png", "/cover.png",
                 "Hello", java.time.LocalDate.of(2000, 1, 1), com.chatsocial.enums.Gender.OTHER));

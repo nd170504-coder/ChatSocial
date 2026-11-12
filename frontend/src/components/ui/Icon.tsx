@@ -1,6 +1,7 @@
 import type { SVGProps } from 'react'
 
 const paths = {
+  statistics: <><path d="M4 3v18h17M8 16v-4M13 16V7M18 16V4" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
   send: <><path d="m22 2-7 20-4-9-9-4zM22 2 11 13" /></>,
   comment: <path d="M21 11a8 8 0 0 1-8 8H7l-4 3V7a4 4 0 0 1 4-4h6a8 8 0 0 1 8 8z" />,

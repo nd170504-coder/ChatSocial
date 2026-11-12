@@ -1,0 +1,24 @@
+.statistics-page { max-width: 1120px; margin: 0 auto; padding: 48px 36px; }
+.statistics-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
+.statistics-heading h1 { margin: 12px 0; font-size: 30px; color: #172e4c; }
+.statistics-heading p, .statistics-status { color: #7c8ba2; font-size: 13px; line-height: 1.8; }
+.statistics-heading > div { min-width: 0; }
+.statistics-heading button { flex-shrink: 0; width: auto; margin: 0; }
+.statistics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0; }
+.statistics-card { min-width: 0; padding: 28px; background: #fff; border: 1px solid #e2e9f3; border-radius: 18px; }
+.statistics-card dt { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; color: #425773; }
+.statistics-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: #edf2ff; color: #3564e9; }
+.statistics-green .statistics-icon { background: #eaf7f1; color: #299779; }
+.statistics-pink .statistics-icon { background: #fff0f3; color: #d56180; }
+.statistics-purple .statistics-icon { background: #f1edff; color: #8764d4; }
+.statistics-card dd { margin: 20px 0 10px; font-size: 42px; font-weight: 700; color: #172e4c; overflow-wrap: anywhere; }
+.statistics-card p { margin: 10px 0 0; font-size: 12px; font-weight: 400; color: #8290a5; line-height: 1.8; }
+.statistics-note { display: flex; align-items: flex-start; gap: 12px; margin-top: 28px; padding: 20px; color: #7b89a0; font-size: 12px; line-height: 1.8; }
+.statistics-note > svg { flex-shrink: 0; margin-top: 3px; }
+.statistics-note strong { color: #536880; font-weight: 600; }
+.statistics-note p { margin: 6px 0 10px; }
+.statistics-note a { color: #3564e9; }
+.statistics-error { color: #a04758; font-size: 13px; }
+.statistics-error button { font: inherit; color: #3564e9; border: 0; background: transparent; text-decoration: underline; }
+@media (max-width: 760px) { .statistics-page { padding: 28px 16px; } .statistics-heading { align-items: flex-start; gap: 12px; } .statistics-heading h1 { font-size: 25px; } .statistics-card { padding: 20px; } .statistics-grid { gap: 12px; } .statistics-note { padding: 12px 0; } }
+@media (max-width: 480px) { .statistics-grid { grid-template-columns: 1fr; } }
