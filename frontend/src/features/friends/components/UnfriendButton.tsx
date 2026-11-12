@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { ApiError } from '../../../api/client'
 import { profileApi } from '../../profile/api'
 import type { UserProfile } from '../../profile/types'
 import { friendsApi } from '../api'
 
-export function UnfriendButton({ userId, fullName, onRemoved, onBusyChange, disabled = false }: {
+export function UnfriendButton({ userId, fullName, onRemoved, onBusyChange, disabled = false, leadingIcon }: {
   userId: string
   fullName: string
   onRemoved: (profile?: UserProfile) => void
   onBusyChange?: (busy: boolean) => void
   disabled?: boolean
+  leadingIcon?: ReactNode
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -44,7 +46,7 @@ export function UnfriendButton({ userId, fullName, onRemoved, onBusyChange, disa
   }
 
   return <div className="unfriend-action">
-    {!confirming ? <button type="button" className="unfriend-trigger" disabled={disabled} onClick={() => setConfirming(true)}>Hủy kết bạn</button>
+    {!confirming ? <button type="button" className="unfriend-trigger" disabled={disabled} onClick={() => setConfirming(true)}>{leadingIcon}Hủy kết bạn</button>
       : <div className="unfriend-confirm"><p>Hủy kết bạn với <strong>{fullName}</strong>?</p><span>Hai bạn sẽ chỉ xem được bài công khai của nhau.</span><div><button type="button" disabled={busy || disabled} className="unfriend-remove" onClick={() => void remove()}>{busy ? 'Đang hủy…' : 'Xác nhận hủy kết bạn'}</button><button type="button" disabled={busy || disabled} onClick={() => { setConfirming(false); setError('') }}>Giữ bạn bè</button></div></div>}
     {error && <p className="unfriend-error" role="alert">{error}</p>}
   </div>

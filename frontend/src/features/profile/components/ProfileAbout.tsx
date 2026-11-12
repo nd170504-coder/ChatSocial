@@ -12,7 +12,7 @@ export function ProfileAbout({ profile, email }: {
     </section>
     <section className="profile-card info-card"><div className="profile-card-heading"><h2>Thông tin cá nhân</h2><span className="card-heading-icon"><Icon name="user" /></span></div>
       <dl className="profile-info">
-        {email && <div><dt>Email <span className="profile-private-label">Chỉ mình tôi</span></dt><dd>{email}</dd></div>}
+        {email && <div><dt>Email</dt><dd>{email}</dd></div>}
         <div><dt>Ngày sinh</dt><dd className={!profile.dateOfBirth ? 'empty-value' : ''}>{profile.dateOfBirth ? formatBirthDate(profile.dateOfBirth) : 'Chưa chia sẻ'}</dd></div>
         <div><dt>Giới tính</dt><dd className={!profile.gender ? 'empty-value' : ''}>{profile.gender ? genderLabels[profile.gender] : 'Chưa chia sẻ'}</dd></div>
       </dl>

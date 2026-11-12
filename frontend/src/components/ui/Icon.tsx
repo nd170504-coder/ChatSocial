@@ -1,6 +1,9 @@
 import type { SVGProps } from 'react'
 
 const paths = {
+  unfriend: <><circle cx="9" cy="8" r="4" /><path d="M2 21v-2a7 7 0 0 1 14 0v2M17 9h5" /></>,
+  ban: <><circle cx="12" cy="12" r="9" /><path d="m6 6 12 12" /></>,
+  more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
   statistics: <><path d="M4 3v18h17M8 16v-4M13 16V7M18 16V4" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
   send: <><path d="m22 2-7 20-4-9-9-4zM22 2 11 13" /></>,
