@@ -15,7 +15,18 @@
 .posts-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
 .posts-section-heading .form-eyebrow { margin-bottom: 8px; font-size: 9px; }
 .posts-section-heading h2 { margin: 0; font-size: 24px; letter-spacing: -.6px; }
-.posts-section-heading > span { font-size: 11px; color: #7b89a0; }
+.posts-heading-actions { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.posts-heading-actions > span { font-size: 11px; color: #7b89a0; }
+.post-create-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #dce6ff; border-radius: 50%; color: var(--primary); background: #edf3ff; }
+.post-create-button:hover { background: #dfeaff; }
+.create-post-dialog { width: min(660px, calc(100% - 32px)); max-height: 90dvh; padding: 0; border: 1px solid #e6ebf3; border-radius: 18px; background: #fff; color: #263b59; box-shadow: 0 24px 100px #12234140; overflow-y: auto; overscroll-behavior: contain; }
+.create-post-dialog::backdrop { background: #13223b99; }
+.create-post-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #edf0f6; }
+.create-post-heading .eyebrow { font-size: 9px; }
+.create-post-heading h2 { margin: 8px 0 0; font-size: 22px; }
+.create-post-heading .icon-button { flex-shrink: 0; border-radius: 50%; background: #f1f4f9; }
+.create-post-dialog .post-textarea { min-height: 150px; }
+@media (max-width: 480px) { .posts-heading-actions { gap: 8px; } .posts-heading-actions > span { display: none; } .create-post-heading { padding: 16px; } .create-post-dialog .post-editor { padding: 16px; } }
 .post-composer, .post-card { background: #fff; border: 1px solid #e6ebf3; border-radius: 14px; overflow: hidden; }
 .post-composer { margin-bottom: 22px; }
 .post-editor { padding: 24px; }
