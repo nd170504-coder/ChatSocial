@@ -206,6 +206,62 @@ class NotificationIntegrationTests {
     }
 
     @Test
+    void lastSeenPersistsAfterTheFinalTabClosesAndIsOnlySharedWithFriends() throws Exception {
+        User viewer = user(), friend = user(), unknown = user(), stranger = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(viewer, friend));
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(viewer, unknown));
+        var oldTime = java.time.Instant.parse("2026-01-01T00:00:00Z");
+        users.updateLastSeen(java.util.Set.of(friend.getId()), oldTime);
+        assertEquals(oldTime, presence.getOnlineFriends(viewer.getId()).friends().stream()
+                .filter(item -> item.userId().equals(friend.getId())).findFirst().orElseThrow().lastSeenAt());
+        assertNull(presence.getOnlineFriends(viewer.getId()).friends().stream()
+                .filter(item -> item.userId().equals(unknown.getId())).findFirst().orElseThrow().lastSeenAt());
+        assertTrue(presence.getOnlineFriends(stranger.getId()).friends().isEmpty());
+        var friendLogin = login(friend);
+        try (Socket observer = connect(login(viewer).getAccessToken());
+             Socket firstTab = connect(friendLogin.getAccessToken());
+             Socket secondTab = connect(friendLogin.getAccessToken())) {
+            subscribe(observer, viewer.getId(), "/user/queue/presence");
+            var online = presence.getOnlineFriends(viewer.getId()).friends().stream()
+                    .filter(item -> item.userId().equals(friend.getId())).findFirst().orElseThrow();
+            assertTrue(online.online()); assertNull(online.lastSeenAt());
+            firstTab.close();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (registry.getUser(friend.getId()).getSessions().size() > 1 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId()));
+            var closingAt = java.time.Instant.now().minusMillis(10);
+            secondTab.close();
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            java.time.Instant saved;
+            do {
+                saved = users.findById(friend.getId()).orElseThrow().getLastSeenAt();
+                if (!presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId())
+                        && saved != null && !saved.isBefore(closingAt)) break;
+                Thread.sleep(10);
+            } while (System.nanoTime() < deadline);
+            assertNotNull(saved); assertFalse(saved.isBefore(closingAt));
+            assertFalse(presence.getOnlineFriends(viewer.getId()).onlineUserIds().contains(friend.getId()));
+            assertEquals(0, users.updateLastSeen(java.util.Set.of(friend.getId()), oldTime));
+            observer.frames.clear();
+            presence.broadcastPresence();
+            var snapshot = json.readTree(observer.next().split("\n\n", 2)[1]);
+            var friendNode = java.util.stream.StreamSupport.stream(snapshot.get("friends").spliterator(), false)
+                    .filter(item -> item.get("userId").asText().equals(friend.getId())).findFirst().orElseThrow();
+            assertFalse(friendNode.get("online").asBoolean());
+            assertNotNull(friendNode.get("lastSeenAt").asText());
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+            mvc.perform(get("/api/presence/friends").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.friends.length()").value(2))
+                    .andExpect(jsonPath("$.data.friends[*].email").isEmpty());
+            blocks.change(viewer.getId(), friend.getId(), true);
+            assertFalse(presence.getOnlineFriends(viewer.getId()).friends().stream().anyMatch(item -> item.userId().equals(friend.getId())));
+            assertTrue(presence.getOnlineFriends(friend.getId()).friends().isEmpty());
+            friendService.unfriend(viewer.getId(), unknown.getId());
+            assertTrue(presence.getOnlineFriends(viewer.getId()).friends().isEmpty());
+        }
+    }
+
+    @Test
     void presenceGoesOfflineAfterTheLastConnectionCloses() throws Exception {
         User a = user(), b = user();
         friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));

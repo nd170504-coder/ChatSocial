@@ -58,6 +58,12 @@ public class User {
     @Setter(AccessLevel.NONE)
     private Instant updatedAt;
 
+    @Column(
+            name = "last_seen_at",
+            columnDefinition = "timestamp with time zone"
+    )
+    private Instant lastSeenAt;
+
     @PrePersist
     @PreUpdate
     private void normalizeIdentity() {
@@ -70,5 +76,9 @@ public class User {
         if (status == null) {
             status = UserStatus.ACTIVE;
         }
+    }
+
+    public User(String id, String email, String passwordHash, String username, UserStatus status, Instant createdAt, Instant updatedAt) {
+        this(id, email, passwordHash, username, status, createdAt, updatedAt, null);
     }
 }

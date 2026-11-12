@@ -4,5 +4,6 @@ import java.util.List;
 
 public record PresenceResponse(
         String type,
-        List<String> onlineUserIds
+        List<String> onlineUserIds,
+        List<FriendPresenceResponse> friends
 ) {}

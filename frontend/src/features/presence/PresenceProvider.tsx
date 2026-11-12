@@ -3,23 +3,24 @@ import { env } from '../../config/env'
 import { authenticatedRequest, authStore } from '../auth/session'
 import { connectUserChannel } from '../notifications/socket'
 import { notificationSocketUrl } from '../notifications/utils'
-import { parsePresence } from './state'
+import { parsePresence, type FriendPresence } from './state'
 import './presence.css'
 
-const PresenceContext = createContext<ReadonlySet<string>>(new Set())
+const emptyPresence = { online: new Set<string>() as ReadonlySet<string>, friends: new Map<string, FriendPresence>() as ReadonlyMap<string, FriendPresence> }
+const PresenceContext = createContext(emptyPresence)
 
 export function PresenceProvider({ userId, children }: { userId: string; children: ReactNode }) {
-  const [online, setOnline] = useState<ReadonlySet<string>>(new Set())
+  const [presence, setPresence] = useState(emptyPresence)
   useEffect(() => {
     let active = true, generation = 0, version = 0
     let controller: AbortController | undefined
     let expiry: ReturnType<typeof setTimeout> | undefined
-    const clear = () => { clearTimeout(expiry); setOnline(new Set()) }
+    const clear = () => { clearTimeout(expiry); setPresence(emptyPresence) }
     const accept = (value: unknown) => {
       const snapshot = parsePresence(value)
       if (!active || !snapshot) return
       version++
-      setOnline(new Set(snapshot.onlineUserIds))
+      setPresence({ online: new Set(snapshot.onlineUserIds), friends: new Map(snapshot.friends.map(friend => [friend.userId, friend])) })
       clearTimeout(expiry)
       // Hide stale dots if updates stop without a clean socket close.
       expiry = setTimeout(clear, 20_000)
@@ -56,10 +57,15 @@ export function PresenceProvider({ userId, children }: { userId: string; childre
       document.removeEventListener('visibilitychange', visibility)
     }
   }, [userId])
-  return <PresenceContext.Provider value={online}>{children}</PresenceContext.Provider>
+  return <PresenceContext.Provider value={presence}>{children}</PresenceContext.Provider>
 }
 
 export function useOnline(userId?: string) {
-  const online = useContext(PresenceContext)
+  const { online } = useContext(PresenceContext)
   return !!userId && online.has(userId)
+}
+
+export function usePresence(userId?: string) {
+  const { friends } = useContext(PresenceContext)
+  return userId ? friends.get(userId) : undefined
 }

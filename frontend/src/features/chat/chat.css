@@ -113,3 +113,4 @@
 .chat-typing-dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes chat-typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-3px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .chat-typing-dots i { animation: none; } }
+.chat-person .chat-person-last-seen { color: #8896aa; font-size: 11px; font-weight: 400; }

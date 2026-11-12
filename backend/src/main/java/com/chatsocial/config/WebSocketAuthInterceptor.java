@@ -1,6 +1,8 @@
 package com.chatsocial.config;
 
+import com.chatsocial.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -16,17 +18,20 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class WebSocketAuthInterceptor implements ChannelInterceptor{
 
     private final JwtDecoder jwtDecoder;
     private final ActiveUserJwtConverter userConverter;
+    private final UserRepository userRepository;
 
     private final Map<String, JwtAuthenticationToken> sessions = new ConcurrentHashMap<>();
 
@@ -65,12 +70,13 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
 
             accessor.setUser(authentication);
             sessions.put(sessionId, authentication);
+            rememberLastSeen(authentication.getName());
 
             return message;
         }
 
         if (command == StompCommand.DISCONNECT) {
-            sessions.remove(sessionId);
+            removeSession(sessionId);
             return message;
         }
 
@@ -145,7 +151,45 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor{
 
     @EventListener
     public void disconnected(SessionDisconnectEvent event) {
-        sessions.remove(event.getSessionId());
+        removeSession(event.getSessionId());
+    }
+
+    private void removeSession(String sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+
+        // Xóa đúng kết nối vừa ngắt và lấy tài khoản của kết nối đó.
+        JwtAuthenticationToken removed = sessions.remove(sessionId);
+
+        // DISCONNECT và SessionDisconnectEvent có thể cùng xảy ra.
+        // Chỉ xử lý lần đầu, tránh ghi lại thời gian hai lần.
+        if (removed == null) {
+            return;
+        }
+
+        String userId = removed.getName();
+
+        // getOnlineUserIds() hiện tại đã gộp các phiên theo tài khoản.
+        //
+        // Nếu tab/thiết bị khác vẫn còn kết nối hợp lệ,
+        // tài khoản vẫn online nên chưa ghi nhận lần ngắt cuối.
+        if (getOnlineUserIds().contains(userId)) {
+            return;
+        }
+
+        // Đây là kết nối hợp lệ cuối cùng của tài khoản.
+        rememberLastSeen(userId);
+    }
+
+    private void rememberLastSeen(String userId) {
+        try {
+            userRepository.updateLastSeen(Set.of(userId), Instant.now());
+        } catch (RuntimeException exception) {
+            // Lỗi lưu lastSeen không được làm hỏng quá trình
+            // mở/đóng kết nối WebSocket.
+            log.warn("Could not update last seen for user {}", userId, exception);
+        }
     }
 
     public Set<String> getOnlineUserIds() {
