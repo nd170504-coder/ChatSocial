@@ -14,9 +14,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationSocketListener {
 
     private final SimpMessagingTemplate messaging;
+    private final BlockPolicy blockPolicy;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void created(NotificationCreated event) {
+        if (blockPolicy.between(event.recipientId(), event.notification().actorId())) return;
         try {
             messaging.convertAndSendToUser(
                     event.recipientId(),

@@ -5,9 +5,11 @@ import { connectUserChannel, type ConnectionStatus } from '../notifications/sock
 import { notificationSocketUrl } from '../notifications/utils'
 import type { ChatEvent } from './types'
 import { parseChatEvent } from './utils'
+import { chatApi } from './api'
 
 const ChatContext = createContext<{
   status: ConnectionStatus; revision: number; connectionRevision: number
+  relationshipRevision: number; relationshipsChanged: () => void
   subscribe: (listener: (event: ChatEvent) => void) => () => void
   refresh: () => void
   hasNewMessages: boolean
@@ -15,10 +17,12 @@ const ChatContext = createContext<{
 } | null>(null)
 
 export function ChatProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const [relationshipRevision, setRelationshipRevision] = useState(0)
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [revision, setRevision] = useState(0)
   const [connectionRevision, setConnectionRevision] = useState(0)
   const [newConversations, setNewConversations] = useState(new Set<string>())
+  const relationshipsChanged = useCallback(() => { setRelationshipRevision(value => value + 1); setRevision(value => value + 1); setNewConversations(new Set()) }, [])
   const listeners = useRef(new Set<(event: ChatEvent) => void>())
   const refresh = useCallback(() => setRevision(value => value + 1), [])
   const acknowledgeRead = useCallback((id: string, unread: number) => {
@@ -30,6 +34,7 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
   }, [])
   useEffect(() => {
     let active = true
+    const versions = new Map<string, number>()
     const connection = connectUserChannel({
       url: notificationSocketUrl(env.apiBaseUrl, window.location.href), destination: '/user/queue/chat',
       getToken: async () => {
@@ -43,10 +48,17 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
         if (!active) return
         const event = parseChatEvent(body)
         if (!event) return
-        if (event.type === 'MESSAGE_CREATED' && event.message.senderId !== userId) {
+        if (event.type === 'RELATIONSHIP_CHANGED') { relationshipsChanged(); return }
+        const version = (versions.get(event.conversationId) || 0) + 1
+        versions.set(event.conversationId, version)
+        if (event.type === 'MESSAGE_CREATED' && !event.message.deletedAt && event.message.senderId !== userId) {
           setNewConversations(previous => new Set([...previous, event.conversationId]))
         } else if (event.type === 'MESSAGES_READ' && event.read.readerId === userId) {
           acknowledgeRead(event.conversationId, event.read.unreadCount)
+        } else if (event.type === 'MESSAGE_RECALLED') {
+          void chatApi.get(event.conversationId).then(response => {
+            if (active && versions.get(event.conversationId) === version) acknowledgeRead(event.conversationId, response.data.unreadCount)
+          }).catch(() => {})
         }
         for (const listener of listeners.current) listener(event)
         refresh()
@@ -57,8 +69,8 @@ export function ChatProvider({ userId, children }: { userId: string; children: R
     window.addEventListener('online', online)
     document.addEventListener('visibilitychange', visible)
     return () => { active = false; connection.stop(); window.removeEventListener('online', online); document.removeEventListener('visibilitychange', visible) }
-  }, [userId, refresh, acknowledgeRead])
-  const value = useMemo(() => ({ status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, hasNewMessages: newConversations.size > 0 }), [status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, newConversations])
+  }, [userId, refresh, acknowledgeRead, relationshipsChanged])
+  const value = useMemo(() => ({ relationshipRevision, relationshipsChanged, status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, hasNewMessages: newConversations.size > 0 }), [relationshipRevision, relationshipsChanged, status, revision, connectionRevision, subscribe, refresh, acknowledgeRead, newConversations])
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
 

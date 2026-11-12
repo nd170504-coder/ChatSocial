@@ -31,6 +31,7 @@ public class NotificationService {
     private final NotificationRepository notifications;
     private final UserProfileRepository profiles;
     private final ApplicationEventPublisher events;
+    private final BlockPolicy blockPolicy;
 
     @Transactional(readOnly = true)
     public NotificationPageResponse list(String userId, int page, int size) {
@@ -90,7 +91,7 @@ public class NotificationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void create(User recipient, User actor, Post post, NotificationType type) {
-        if (recipient.getId().equals(actor.getId())) {
+        if (recipient.getId().equals(actor.getId()) || blockPolicy.between(recipient.getId(), actor.getId())) {
             return;
         }
 

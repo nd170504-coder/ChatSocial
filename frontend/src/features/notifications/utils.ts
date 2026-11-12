@@ -4,7 +4,7 @@ const descriptions: Record<NotificationType, string> = {
   FRIEND_REQUEST: 'đã gửi lời mời kết bạn cho bạn.',
   FRIEND_ACCEPTED: 'đã chấp nhận lời mời kết bạn của bạn.',
   POST_LIKED: 'đã thích bài viết của bạn.',
-  POST_COMMENTED: 'đã bình luận về bài viết của bạn.',
+  POST_COMMENTED: 'đã bình luận trong một bài viết.',
 }
 
 export function notificationText(item: NotificationItem) { return `${item.actorName} ${descriptions[item.type]}` }

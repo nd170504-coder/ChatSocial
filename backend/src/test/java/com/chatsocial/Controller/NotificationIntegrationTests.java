@@ -56,12 +56,59 @@ class NotificationIntegrationTests {
     @Autowired com.chatsocial.service.ChatService chat;
     @Autowired com.chatsocial.repository.FriendshipRepository friendships;
     @Autowired com.chatsocial.service.PresenceService presence;
+    @Autowired com.chatsocial.service.BlockService blocks;
     @Autowired UserSessionService sessions;
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
     @Autowired WebApplicationContext context;
     @MockitoBean JavaMailSender mail;
+    @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
+
+    @Test
+    void replyNotificationReachesParentAuthorOverWebSocket() throws Exception {
+        User owner = user(), parentAuthor = user(), replier = user();
+        Post post = posts.saveAndFlush(Post.builder().user(owner).content("Public").privacy(PostPrivacy.PUBLIC).build());
+        var parent = postService.createComment(parentAuthor.getId(), post.getId(),
+                new com.chatsocial.dto.comment.CreateCommentRequest("Root"));
+        try (Socket socket = connect(login(parentAuthor).getAccessToken())) {
+            subscribe(socket, parentAuthor.getId());
+            postService.createReply(replier.getId(), post.getId(), parent.id(),
+                    new com.chatsocial.dto.comment.CreateCommentRequest("Reply"));
+            var data = json.readTree(socket.next().split("\n\n", 2)[1]);
+            assertTrue(data.toString().contains("POST_COMMENTED"));
+            assertTrue(data.toString().contains(post.getId()));
+            assertNull(socket.frames.poll(250, TimeUnit.MILLISECONDS));
+        }
+    }
+
+    @Test
+    void blockingRefreshesBothChatsWithoutSendingABlockNotification() throws Exception {
+        User a = user(), b = user();
+        friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));
+        String conversationId = chat.openDirect(a.getId(), new com.chatsocial.dto.chat.OpenDirectRequest(b.getId())).id();
+        chat.send(a.getId(), conversationId, new com.chatsocial.dto.chat.SendMessageRequest("History", UUID.randomUUID()));
+        try (Socket first = connect(login(a).getAccessToken()); Socket second = connect(login(b).getAccessToken())) {
+            subscribe(first, a.getId(), "/user/queue/chat"); subscribe(first, a.getId(), "/user/queue/notifications");
+            subscribe(second, b.getId(), "/user/queue/chat"); subscribe(second, b.getId(), "/user/queue/notifications");
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().contains(b.getId()));
+            blocks.change(a.getId(), b.getId(), true);
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("RELATIONSHIP_CHANGED", data.get("type").asText());
+                assertEquals(conversationId, data.get("conversationId").asText());
+                assertTrue(data.get("message").isNull());
+                assertNull(socket.frames.poll(250, TimeUnit.MILLISECONDS));
+            }
+            assertFalse(chat.get(b.getId(), conversationId).canSend());
+            assertTrue(presence.getOnlineFriends(a.getId()).onlineUserIds().isEmpty());
+            assertTrue(presence.getOnlineFriends(b.getId()).onlineUserIds().isEmpty());
+            blocks.change(a.getId(), b.getId(), false);
+            for (Socket socket : java.util.List.of(first, second)) assertTrue(socket.next().contains("RELATIONSHIP_CHANGED"));
+            assertFalse(chat.get(a.getId(), conversationId).canSend());
+        }
+    }
 
     @Test
     void presenceIsPrivateAndTracksMultipleConnectionsAndRevocation() throws Exception {
@@ -179,6 +226,31 @@ class NotificationIntegrationTests {
                 assertEquals("MESSAGES_READ", data.get("type").asText());
                 assertEquals(b.getId(), data.get("read").get("readerId").asText());
             }
+            org.mockito.Mockito.when(storage.newPostPath(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(a.getId() + "/posts/" + UUID.randomUUID() + ".png");
+            var image = chat.sendImage(a.getId(), conversationId, UUID.randomUUID(),
+                    new org.springframework.mock.web.MockMultipartFile("file", "image.png", "image/png", new byte[]{(byte)137,80,78,71,13,10,26,10,1}));
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGE_CREATED", data.get("type").asText());
+                assertEquals(image.id(), data.get("message").get("id").asText());
+                assertTrue(data.get("message").get("content").isNull());
+                assertEquals("IMAGE", data.get("message").get("media").get(0).get("mediaType").asText());
+            }
+            chat.recall(a.getId(), conversationId, image.id());
+            for (Socket socket : java.util.List.of(first, second)) {
+                String frame = socket.next();
+                var data = json.readTree(frame.substring(frame.indexOf("\n\n") + 2));
+                assertEquals("MESSAGE_RECALLED", data.get("type").asText());
+                assertEquals(image.id(), data.get("message").get("id").asText());
+                assertTrue(data.get("message").get("content").isNull());
+                assertTrue(data.get("message").get("media").isEmpty());
+                assertFalse(data.get("message").get("deletedAt").isNull());
+            }
+            chat.recall(a.getId(), conversationId, image.id());
+            assertNull(first.frames.poll(200, TimeUnit.MILLISECONDS));
+            assertNull(second.frames.poll(200, TimeUnit.MILLISECONDS));
         }
     }
 
@@ -234,7 +306,7 @@ class NotificationIntegrationTests {
     }
 
     private void subscribe(Socket socket, String userId, String destination) throws Exception {
-        socket.send("SUBSCRIBE\nid:private-test\ndestination:" + destination + "\nack:auto\n\n");
+        socket.send("SUBSCRIBE\nid:private-test-" + destination.hashCode() + "\ndestination:" + destination + "\nack:auto\n\n");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (System.nanoTime() < deadline) {
             var user = registry.getUser(userId);

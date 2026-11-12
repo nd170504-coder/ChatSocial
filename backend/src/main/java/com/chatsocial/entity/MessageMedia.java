@@ -37,4 +37,10 @@ public class MessageMedia {
     @Enumerated(EnumType.STRING)
     @Column(name = "media_type", nullable = false, length = 10)
     private MediaType mediaType;
+
+    public MessageMedia(Message message, String storagePath) {
+        this.message = message;
+        this.mediaUrl = storagePath;
+        this.mediaType = MediaType.IMAGE;
+    }
 }

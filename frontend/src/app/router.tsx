@@ -15,6 +15,7 @@ import { FindFriendsPage } from '../features/friends/pages/FindFriendsPage'
 import { UserProfilePage } from '../features/profile/pages/UserProfilePage'
 import { FriendRequestsPage } from '../features/friends/pages/FriendRequestsPage'
 import { FriendsPage } from '../features/friends/pages/FriendsPage'
+import { BlockedUsersPage } from '../features/blocks/BlockedUsersPage'
 import { ChatPage } from '../features/chat/ChatPage'
 
 export function AppRouter() {
@@ -41,6 +42,7 @@ export function AppRouter() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<ProfilePage editing />} />
         <Route path="/posts/:postId" element={<PostPage />} />
+        <Route path="/settings/blocked" element={<BlockedUsersPage />} />
         <Route path="/settings/account" element={<AccountPage />} />
       </Route>
     </Route>

@@ -48,7 +48,7 @@ public class PostController {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.success("Public posts retrieved successfully",
-                postService.getPublicPosts(page, size)));
+                postService.getPublicPosts(SecurityUtils.getCurrentUserId(), page, size)));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -157,6 +157,21 @@ public class PostController {
         var response = postService.getComments(SecurityUtils.getCurrentUserId(), postId, page, size);
 
         return ResponseEntity.ok(ApiResponse.success("Comments retrieved successfully", response));
+    }
+
+    @GetMapping("/{postId}/comments/{commentId}/replies")
+    public ResponseEntity<ApiResponse<CommentPageResponse>> getReplies(
+            @PathVariable("postId") String postId, @PathVariable("commentId") String commentId,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success("Replies retrieved", postService.getReplies(SecurityUtils.getCurrentUserId(), postId, commentId, page, size)));
+    }
+
+    @PostMapping("/{postId}/comments/{commentId}/replies")
+    public ResponseEntity<ApiResponse<CommentResponse>> createReply(
+            @PathVariable("postId") String postId, @PathVariable("commentId") String commentId,
+            @Valid @RequestBody CreateCommentRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Reply created", postService.createReply(SecurityUtils.getCurrentUserId(), postId, commentId, request)));
     }
 
     @GetMapping("/{postId}/comments/count")

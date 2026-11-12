@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/hooks/useAuth'
 import { PostSection } from '../../posts/components/PostSection'
 import { FriendRequestAction } from '../../friends/components/FriendRequestAction'
 import { FriendCount } from '../../friends/components/FriendCount'
+import { BlockButton } from '../../blocks/BlockButton'
 import { StartChatButton } from '../../chat/StartChatButton'
 import { profileApi } from '../api'
 import { Avatar } from '../components/Avatar'
@@ -36,14 +37,14 @@ function UserProfileContent({ userId, onRefresh }: { userId: string; onRefresh: 
       if (active) setProfile(response.data)
     }).catch(cause => {
       if (active) setError(cause instanceof ApiError && cause.status === 404
-        ? 'Hồ sơ không tồn tại hoặc tài khoản không còn hoạt động.'
+        ? 'Hồ sơ hiện không khả dụng hoặc bạn không có quyền xem.'
         : 'Chưa thể tải hồ sơ. Vui lòng kiểm tra kết nối và thử lại.')
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false; controller.abort() }
   }, [userId])
 
   if (loading) return <main className="profile-content"><div className="profile-loading" role="status"><div className="skeleton skeleton-cover" /><div className="skeleton skeleton-line" /><p>Đang tải hồ sơ…</p></div></main>
-  if (error || !profile) return <main className="profile-content"><section className="profile-card profile-load-error" role="alert"><h1>Chưa thể xem hồ sơ</h1><p>{error}</p><button className="button button-primary compact-button" type="button" onClick={onRefresh}>Thử lại</button><Link className="visitor-back-link" to="/friends/search">Về tìm bạn</Link></section></main>
+  if (error || !profile) return <main className="profile-content"><section className="profile-card profile-load-error" role="alert"><h1>Chưa thể xem hồ sơ</h1><p>{error}</p><BlockButton userId={userId} fullName="người này" /><Link to="/settings/blocked">Danh sách đã chặn</Link><button className="button button-primary compact-button" type="button" onClick={onRefresh}>Thử lại</button><Link className="visitor-back-link" to="/friends/search">Về tìm bạn</Link></section></main>
 
   return <main className="profile-content visitor-profile">
     <div className="profile-page-heading"><div><span className="eyebrow form-eyebrow">MỖI NGƯỜI, MỘT CÂU CHUYỆN</span><h1>Hồ sơ cá nhân</h1></div><button className="visitor-refresh" type="button" disabled={sendingRequest} onClick={onRefresh}>Làm mới</button></div>
@@ -51,7 +52,7 @@ function UserProfileContent({ userId, onRefresh }: { userId: string; onRefresh: 
       <div className="profile-cover">{profile.coverUrl && !failedCover
         ? <img src={profile.coverUrl} alt={`Ảnh bìa của ${profile.fullName}`} onError={() => setFailedCover(true)} />
         : <div className="default-cover" aria-hidden="true"><span className="cover-orbit orbit-one" /><span className="cover-orbit orbit-two" /><span className="cover-caption">YOUR STORY, YOUR SPACE.</span><span className="cover-star">✳</span></div>}</div>
-      <div className="profile-identity"><div className="avatar-editor"><Avatar userId={profile.userId} name={profile.fullName} src={profile.avatarUrl} /></div><div className="identity-text"><h2>{profile.fullName}</h2><p>@{profile.username}</p><FriendCount key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} /></div><div className="visitor-profile-actions">{profile.relationship === 'FRIENDS' && <StartChatButton userId={profile.userId} />}<FriendRequestAction profile={profile} onUpdated={setProfile} onBusyChange={setSendingRequest} /></div></div>
+      <div className="profile-identity"><div className="avatar-editor"><Avatar userId={profile.userId} name={profile.fullName} src={profile.avatarUrl} /></div><div className="identity-text"><h2>{profile.fullName}</h2><p>@{profile.username}</p><FriendCount key={`${profile.userId}:${profile.relationship}`} userId={profile.userId} /></div><div className="visitor-profile-actions"><BlockButton userId={profile.userId} fullName={profile.fullName} />{profile.relationship === 'FRIENDS' && <StartChatButton userId={profile.userId} />}<FriendRequestAction profile={profile} onUpdated={setProfile} onBusyChange={setSendingRequest} /></div></div>
       <nav className="profile-section-nav" aria-label="Nội dung hồ sơ"><a href="#posts">Bài viết</a><a href="#about">Giới thiệu</a></nav>
     </section>
     <section id="about" className="profile-card"><div className="profile-card-heading"><h2>Giới thiệu</h2></div><p className="profile-bio">{profile.bio || 'Người dùng chưa thêm lời giới thiệu.'}</p></section>

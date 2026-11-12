@@ -11,7 +11,12 @@ export function compareMessages(a: Pick<ChatMessage, 'createdAt' | 'id'>, b: Pic
 }
 export function mergeMessages(previous: ChatMessage[], incoming: ChatMessage[]) {
   const byId = new Map(previous.map(item => [item.id, item]))
-  for (const item of incoming) byId.set(item.id, { ...item, readByRecipient: item.readByRecipient || byId.get(item.id)?.readByRecipient || false })
+  for (const item of incoming) {
+    const previous = byId.get(item.id)
+    const deletedAt = previous?.deletedAt || item.deletedAt
+    // A delayed history/send response must never bring recalled content back.
+    byId.set(item.id, { ...item, deletedAt, ...(deletedAt ? { content: null, media: [] } : {}), readByRecipient: item.readByRecipient || previous?.readByRecipient || false })
+  }
   const items = [...byId.values()].sort(compareMessages)
   const seen = new Map<string, ChatMessage>()
   for (const item of items) if (item.readByRecipient) seen.set(item.senderId, item)
@@ -25,14 +30,19 @@ export function applyRead(messages: ChatMessage[], read: ChatRead) {
 }
 function validMessage(item: ChatMessage) {
   return item && typeof item.id === 'string' && typeof item.conversationId === 'string' && typeof item.senderId === 'string'
-    && typeof item.content === 'string' && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+    && (typeof item.content === 'string' || item.content === null) && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+    && Array.isArray(item.media) && item.media.every(media => media && typeof media.id === 'string' && typeof media.url === 'string' && ['IMAGE', 'VIDEO'].includes(media.mediaType))
+    && (item.deletedAt === null || (typeof item.deletedAt === 'string' && Number.isFinite(Date.parse(item.deletedAt))))
+    && (item.deletedAt ? item.content === null && item.media.length === 0 : !!item.content?.trim() || item.media.length > 0)
     && (item.clientMessageId === null || typeof item.clientMessageId === 'string') && typeof item.readByRecipient === 'boolean'
 }
 export function parseChatEvent(body: string): ChatEvent | null {
   try {
     const event = JSON.parse(body)
     if (typeof event?.conversationId !== 'string') return null
-    if (event.type === 'MESSAGE_CREATED' && validMessage(event.message) && event.message.conversationId === event.conversationId) return event
+    if (event.type === 'RELATIONSHIP_CHANGED' && event.message === null && event.read === null) return event
+    if ((event.type === 'MESSAGE_CREATED' || event.type === 'MESSAGE_RECALLED') && validMessage(event.message)
+      && event.message.conversationId === event.conversationId && (event.type !== 'MESSAGE_RECALLED' || event.message.deletedAt)) return event
     const read = event.read
     if (event.type === 'MESSAGES_READ' && read?.conversationId === event.conversationId && typeof read.readerId === 'string'
       && typeof read.unreadCount === 'number' && ((read.lastReadMessageId === null && read.lastReadMessageCreatedAt === null)
@@ -47,6 +57,8 @@ export function chatError(cause: unknown) {
     if (cause.status === 404) return 'Cuộc trò chuyện hoặc tin nhắn không còn khả dụng.'
     if (cause.status === 409) return 'Mã gửi tin đã được sử dụng cho nội dung khác.'
     if (cause.status === 400) return 'Hãy kiểm tra nội dung tin nhắn, tối đa 2.000 ký tự.'
+    if (cause.status === 413) return 'Ảnh không được lớn hơn 5 MB.'
+    if (cause.status === 415) return 'Vui lòng chọn ảnh JPEG, PNG hoặc WebP hợp lệ.'
   }
   return 'Chưa thể kết nối máy chủ. Vui lòng thử lại.'
 }

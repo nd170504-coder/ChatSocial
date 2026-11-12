@@ -29,6 +29,7 @@ public class FriendService {
     private final FriendshipRepository friendshipRepository;
     private final UserProfileRepository profileRepository;
     private final UserRepository userRepository;
+    private final BlockPolicy blockPolicy;
 
     @Transactional(readOnly = true)
     public FriendPageResponse getFriends(String currentUserId, int page, int size) {
@@ -73,7 +74,8 @@ public class FriendService {
     }
 
     @Transactional(readOnly = true)
-    public FriendCountResponse countFriends(String userId) {
+    public FriendCountResponse countFriends(String viewerId, String userId) {
+        blockPolicy.requireVisible(viewerId, userId);
         userRepository.findById(userId)
                 .filter(user -> user.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));

@@ -9,6 +9,7 @@ import { postApi } from '../api'
 import type { Post, PostComment } from '../types'
 import { postError, postTime } from '../utils'
 import { PostBody } from './PostBody'
+import { CommentReplies } from './CommentReplies'
 import { PostLikes, type usePostLikes } from './PostLikes'
 
 export function PostComments({ post, authorName, avatarUrl, likes }: {
@@ -33,6 +34,9 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
   const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
   const [draft, setDraft] = useState('')
+  const [replyTarget, setReplyTarget] = useState<PostComment | null>(null)
+  const [replyRevisions, setReplyRevisions] = useState<Record<string, number>>({})
+  const input = useRef<HTMLTextAreaElement>(null)
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const locked = useRef(false)
@@ -88,13 +92,13 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
 
   function show() {
     if (locked.current) return
-    load(0); setOpen(true)
+    load(0); setOpen(true); setCountAttempt(value => value + 1)
   }
 
   function close() {
     if (locked.current) return
     modal.current?.close()
-    setOpen(false); setConfirmId(null)
+    setOpen(false); setConfirmId(null); setReplyTarget(null)
   }
 
   async function create() {
@@ -103,10 +107,15 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
     locked.current = true
     setBusy(true); setActionError(''); setNotice('')
     try {
-      await postApi.createComment(postId, content)
+      if (replyTarget) await postApi.createReply(postId, replyTarget.id, content)
+      else await postApi.createComment(postId, content)
       if (!mounted.current) return
-      setDraft(''); setNotice('Đã gửi bình luận.'); setConfirmId(null)
-      load(0)
+      setDraft(''); setNotice(replyTarget ? 'Đã gửi câu trả lời.' : 'Đã gửi bình luận.'); setConfirmId(null)
+      if (replyTarget) {
+        setItems(previous => previous.map(item => item.id === replyTarget.id ? { ...item, replyCount: (item.replyCount || 0) + 1 } : item))
+        setReplyRevisions(previous => ({ ...previous, [replyTarget.id]: (previous[replyTarget.id] || 0) + 1 }))
+        setReplyTarget(null)
+      } else load(0)
       setCountAttempt(value => value + 1)
     } catch (cause) {
       if (mounted.current) setActionError(postError(cause))
@@ -158,8 +167,12 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
           return <li key={comment.id} className="post-comment-item">
             <Link to={profilePath} aria-label={`Xem hồ sơ của ${comment.fullName}`}><Avatar userId={comment.userId} name={comment.fullName} src={comment.avatarUrl} className="comment-avatar" /></Link>
             <div className="post-comment-body"><div className="post-comment-bubble"><Link to={profilePath} className="post-comment-author">{comment.fullName}</Link><p>{comment.content}</p></div>
-              <div className="post-comment-meta"><time dateTime={comment.createdAt}>{postTime(comment.createdAt)}</time>{own && <button type="button" disabled={busy || loading} onClick={() => { setConfirmId(comment.id); setActionError(''); setNotice('') }}>Xóa bình luận</button>}</div>
+              <div className="post-comment-meta"><time dateTime={comment.createdAt}>{postTime(comment.createdAt)}</time>{comment.canReply !== false && <button type="button" disabled={busy || loading} onClick={() => { setReplyTarget(comment); setConfirmId(null); setActionError(''); setNotice(''); input.current?.focus({ preventScroll: true }) }}>Trả lời</button>}{own && <button type="button" disabled={busy || loading || comment.replyCount > 0} title={comment.replyCount > 0 ? 'Không thể xóa bình luận đang có câu trả lời.' : undefined} onClick={() => { setConfirmId(comment.id); setActionError(''); setNotice('') }}>Xóa bình luận</button>}</div>
               {confirmId === comment.id && <div className="post-comment-confirm"><span>Xóa bình luận này?</span><button type="button" disabled={busy || loading} onClick={() => void remove(comment.id)}>{busy ? 'Đang xóa…' : 'Xác nhận xóa'}</button><button type="button" disabled={busy} onClick={() => setConfirmId(null)}>Giữ lại</button></div>}
+              <CommentReplies key={`${comment.id}:${replyRevisions[comment.id] || 0}`} postId={postId} parent={comment} autoOpen={!!replyRevisions[comment.id]} onDeleted={total => {
+                setCount(total); setCountAttempt(value => value + 1); setNotice('Đã xóa câu trả lời.')
+                setItems(previous => previous.map(item => item.id === comment.id ? { ...item, replyCount: Math.max(0, (item.replyCount || 0) - 1) } : item))
+              }} />
             </div>
           </li>
         })}</ul>
@@ -169,14 +182,15 @@ export function PostComments({ post, authorName, avatarUrl, likes }: {
         </section>
       </div>
       <footer className="post-comment-composer">
+        {replyTarget && <div className="comment-reply-target"><span>Đang trả lời <strong>{replyTarget.fullName}</strong></span><button type="button" disabled={busy} onClick={() => setReplyTarget(null)}>Hủy trả lời</button></div>}
         {notice && <p className="post-comment-notice" role="status">{notice}</p>}
         {actionError && <p className="post-comment-error" role="alert">{actionError}</p>}
         <form className="post-comment-form" onSubmit={event => { event.preventDefault(); void create() }}>
           <Avatar name={profileState?.profile?.fullName || session!.user.fullName} src={profileState?.profile?.avatarUrl} className="comment-composer-avatar" />
           <div className="post-comment-input">
-            <label htmlFor={inputId} className="post-comment-label">Viết bình luận</label>
-            <textarea id={inputId} value={draft} maxLength={2000} rows={2} disabled={busy} placeholder={`Bình luận dưới tên ${profileState?.profile?.fullName || session!.user.fullName}…`} onChange={event => setDraft(event.target.value)} />
-            <div className="post-comment-form-actions"><span>{draft.length.toLocaleString('vi-VN')}/2.000</span><button className="post-comment-send" aria-label="Gửi bình luận" title="Gửi bình luận" type="submit" disabled={busy || loading || !draft.trim()}>{busy && !confirmId ? <span>…</span> : <Icon name="send" />}</button></div>
+            <label htmlFor={inputId} className="post-comment-label">{replyTarget ? 'Viết câu trả lời' : 'Viết bình luận'}</label>
+            <textarea ref={input} id={inputId} value={draft} maxLength={2000} rows={2} disabled={busy} placeholder={replyTarget ? `Trả lời ${replyTarget.fullName}…` : `Bình luận dưới tên ${profileState?.profile?.fullName || session!.user.fullName}…`} onChange={event => setDraft(event.target.value)} />
+            <div className="post-comment-form-actions"><span>{draft.length.toLocaleString('vi-VN')}/2.000</span><button className="post-comment-send" aria-label={replyTarget ? 'Gửi câu trả lời' : 'Gửi bình luận'} title={replyTarget ? 'Gửi câu trả lời' : 'Gửi bình luận'} type="submit" disabled={busy || loading || !draft.trim()}>{busy && !confirmId ? <span>…</span> : <Icon name="send" />}</button></div>
           </div>
         </form>
       </footer>

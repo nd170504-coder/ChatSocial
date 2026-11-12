@@ -6,9 +6,13 @@ import com.chatsocial.service.ChatService;
 import com.chatsocial.utils.SecurityUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -83,6 +87,46 @@ public class ConversationController {
                 "Read status updated",
                 service.markRead(me(), id, request)
         ));
+    }
+
+    @PostMapping(
+            value = "/{id}/images",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<MessageResponse>> sendImage(
+            @PathVariable("id") String conversationId,
+            @RequestParam("clientMessageId") UUID clientMessageId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        var response = service.sendImage(me(), conversationId, clientMessageId, file);
+
+        return ResponseEntity.ok(ApiResponse.success("Image sent", response));
+    }
+
+    @GetMapping(
+            value = "/{id}/messages/{messageId}/media/{mediaId}",
+            produces = MediaType.APPLICATION_OCTET_STREAM_VALUE
+    )
+    public ResponseEntity<byte[]> getImage(
+            @PathVariable("id") String conversationId,
+            @PathVariable("messageId") String messageId,
+            @PathVariable("mediaId") String mediaId
+    ) {
+        var image = service.getImage(me(), conversationId, messageId, mediaId);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(image.contentType()))
+                .cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(image.bytes());
+    }
+
+    @DeleteMapping("/{id}/messages/{messageId}")
+    public ResponseEntity<ApiResponse<MessageResponse>> recall(
+            @PathVariable("id") String conversationId,
+            @PathVariable("messageId") String messageId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success("Message recalled", service.recall(me(), conversationId, messageId)));
     }
 
     private String me() {
