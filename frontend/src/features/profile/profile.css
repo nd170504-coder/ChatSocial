@@ -55,6 +55,24 @@
 .profile-tab::after { content: ''; position: absolute; bottom: 0; left: 30px; height: 2px; width: 88px; border-radius: 2px; background: #1552f5; }
 .profile-tab svg { width: 16px; height: 16px; }
 .profile-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.visitor-profile .profile-hero { overflow: visible; }
+.visitor-profile .profile-cover { overflow: hidden; border-radius: 16px 16px 0 0; }
+.profile-friend-status { display: flex; align-items: center; gap: 6px; color: #259369; font-size: 12px; margin-top: 10px; }
+.visitor-profile .visitor-profile-actions { align-items: flex-start; gap: 12px; }
+.visitor-profile .start-chat-button { background: var(--primary); border-color: var(--primary); color: #fff; min-height: 42px; border-radius: 9px; padding: 10px 17px; }
+.visitor-profile .start-chat-button:hover:not(:disabled) { background: #1047d9; }
+.profile-actions-menu { position: relative; flex-shrink: 0; }
+.profile-more-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #dfe5ee; border-radius: 9px; color: #526580; background: #fff; }
+.profile-more-button:hover, .profile-more-button[aria-expanded="true"] { background: #f0f5fc; }
+.profile-actions-panel { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: min(290px, calc(100vw - 40px)); padding: 7px; border: 1px solid #e2e8f2; border-radius: 12px; background: #fff; box-shadow: 0 12px 35px #172e4c1a; }
+.profile-actions-panel .unfriend-trigger, .profile-actions-panel .block-button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 11px 12px; border: 0; border-radius: 6px; font-size: 12px; text-align: left; background: transparent; }
+.profile-actions-panel .unfriend-trigger > svg, .profile-actions-panel .block-button > svg { width: 18px; height: 18px; flex-shrink: 0; }
+.profile-actions-panel .unfriend-trigger { color: #405371; }
+.profile-actions-panel .block-action { display: block; }
+.profile-actions-panel > .block-action:not(:first-child) { border-top: 1px solid #edf0f6; margin-top: 5px; padding-top: 5px; }
+.profile-actions-panel .block-button { color: #b24d60; }
+.profile-actions-panel .unfriend-trigger:hover, .profile-actions-panel .block-button:hover { background: #f5f7fc; }
+.profile-actions-panel .unfriend-confirm { text-align: left; }
 .profile-card { border: 1px solid #e6ebf3; border-radius: 14px; background: #fff; padding: 26px; }
 .profile-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 22px; }
 .profile-card-heading h2 { font-size: 15px; letter-spacing: -.2px; margin: 0; }

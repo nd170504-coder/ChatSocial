@@ -4,7 +4,7 @@ import { postApi } from '../api'
 import type { Post, PostPage } from '../types'
 import { postError } from '../utils'
 import { PostCard } from './PostCard'
-import { PostEditor } from './PostEditor'
+import { CreatePostDialog } from './CreatePostDialog'
 import '../posts.css'
 
 export function PostSection({ userId, name, avatarUrl, feed = false, readOnly = false }: { userId: string; name: string; avatarUrl?: string | null; feed?: boolean; readOnly?: boolean }) {
@@ -13,6 +13,7 @@ export function PostSection({ userId, name, avatarUrl, feed = false, readOnly = 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [creating, setCreating] = useState(false)
   const loadingRef = useRef(true)
 
   useEffect(() => {
@@ -44,11 +45,12 @@ export function PostSection({ userId, name, avatarUrl, feed = false, readOnly = 
   }
 
   return <section id="posts" className="posts-section" aria-labelledby="posts-heading">
-    <div className="posts-section-heading"><div><span className="eyebrow form-eyebrow">{feed ? 'CÂU CHUYỆN TỪ MỌI NGƯỜI' : readOnly ? 'NHỮNG CÂU CHUYỆN ĐƯỢC CHIA SẺ' : 'NHỮNG ĐIỀU BẠN CHIA SẺ'}</span><h2 id="posts-heading">{feed ? 'Bảng tin' : readOnly ? 'Bài viết' : 'Bài viết của tôi'}</h2></div><span>Mới nhất trước</span></div>
-    {!feed && !readOnly && <div className="post-composer"><PostEditor name={name} avatarUrl={avatarUrl} onSave={async (values, files) => {
-      await postApi.create(values, files)
-      setNotice('Bài viết đã được đăng.'); load(0)
-    }} /></div>}
+    <div className="posts-section-heading"><div><span className="eyebrow form-eyebrow">{feed ? 'CÂU CHUYỆN TỪ MỌI NGƯỜI' : readOnly ? 'NHỮNG CÂU CHUYỆN ĐƯỢC CHIA SẺ' : 'NHỮNG ĐIỀU BẠN CHIA SẺ'}</span><h2 id="posts-heading">{feed ? 'Bảng tin' : readOnly ? 'Bài viết' : 'Bài viết của tôi'}</h2></div>
+      <div className="posts-heading-actions"><span>Mới nhất trước</span>{!feed && !readOnly && <button type="button" className="post-create-button" aria-label="Tạo bài viết" title="Tạo bài viết" aria-haspopup="dialog" onClick={() => setCreating(true)}><Icon name="edit" /></button>}</div>
+    </div>
+    {creating && <CreatePostDialog name={name} avatarUrl={avatarUrl} onClose={() => setCreating(false)} onCreated={() => {
+      setCreating(false); setNotice('Bài viết đã được đăng.'); load(0)
+    }} />}
     {notice && <div className="post-notice feedback feedback-success" role="status">{notice}<button type="button" aria-label="Ẩn thông báo" onClick={() => setNotice('')}><Icon name="close" width="15" height="15" /></button></div>}
     {error && <div className="post-list-error feedback feedback-error" role="alert"><span>{error}</span><button type="button" onClick={() => load(request.page)}>Thử lại</button></div>}
     <div className="post-list" aria-busy={loading}>{data.items.map(post => <PostCard key={post.id} post={post} authorName={post.userId === userId ? name : post.authorName || 'Thành viên ChatSocial'} avatarUrl={post.userId === userId ? avatarUrl : post.authorAvatarUrl} onSaved={saved} onDeleted={id => {

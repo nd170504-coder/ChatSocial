@@ -15,6 +15,14 @@ import java.util.Optional;
 @Repository
 public interface CommentRepository extends JpaRepository<Comment, String> {
 
+    @Query("""
+        select count(c) from Comment c
+        left join c.parentComment parent left join parent.user parentAuthor
+        where c.post.user.id = :userId and c.user.id <> :userId and c.user.status = :status
+          and (parent is null or parentAuthor.status = :status)
+        """)
+    long countReceivedComments(@Param("userId") String userId, @Param("status") UserStatus status);
+
     @Modifying
     @Query("delete from Comment c where c.post.id = :postId and c.parentComment is not null")
     void deleteRepliesByPostId(@Param("postId") String postId);

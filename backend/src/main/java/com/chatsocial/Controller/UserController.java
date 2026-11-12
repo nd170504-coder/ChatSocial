@@ -5,6 +5,7 @@ import com.chatsocial.dto.friend.FriendCountResponse;
 import com.chatsocial.dto.post.PostPageResponse;
 import com.chatsocial.dto.user.AccountActionRequest;
 import com.chatsocial.dto.user.UserResponse;
+import com.chatsocial.dto.user.UserStatisticsResponse;
 import com.chatsocial.dto.user.UserSearchResponse;
 import com.chatsocial.service.*;
 import com.chatsocial.dto.profile.UserProfileResponse;
@@ -29,9 +30,17 @@ public class UserController {
     private final UserSearchService userSearchService;
     private final UserProfileService userProfileService;
     private final FriendService friendService;
+    private final UserStatisticsService userStatisticsService;
+
+    @GetMapping("/me/statistics")
+    @Operation(summary = "Thống kê cá nhân", description = "Chỉ thống kê tài khoản đăng nhập. Tính mọi mức riêng tư; lượt thích và bình luận nhận được không tính chính mình, bình luận gồm cả câu trả lời.")
+    public ResponseEntity<ApiResponse<UserStatisticsResponse>> statistics() {
+        return ResponseEntity.ok(ApiResponse.success("Statistics retrieved successfully",
+                userStatisticsService.get(SecurityUtils.getCurrentUserId())));
+    }
 
     @GetMapping("/{userId}/profile")
-    @Operation(summary = "Xem hồ sơ người dùng", description = "Thông tin cơ bản và quan hệ SELF/FRIENDS/NONE/OUTGOING_PENDING/INCOMING_PENDING. Không trả email, ngày sinh hoặc giới tính.")
+    @Operation(summary = "Xem hồ sơ người dùng", description = "Thông tin cơ bản, ngày sinh, giới tính và quan hệ SELF/FRIENDS/NONE/OUTGOING_PENDING/INCOMING_PENDING. Không trả email.")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getUserProfile(@PathVariable("userId") String userId) {
         return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully",
                 userProfileService.get(SecurityUtils.getCurrentUserId(), userId)));

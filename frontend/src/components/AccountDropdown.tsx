@@ -54,6 +54,7 @@ export function AccountDropdown({ avatarUrl, fullName }: { avatarUrl?: string | 
       <p className="account-status"><span className="status-dot" aria-hidden="true" />Đã đăng nhập</p>
       <nav aria-label="Tùy chọn tài khoản">
         <Link className="account-action" to="/profile" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="user" />Hồ sơ của tôi</Link>
+        <Link className="account-action" to="/statistics" onClick={() => setOpenAt(null)}><Icon name="statistics" />Thống kê</Link>
         <Link className="account-action" to="/settings/blocked" onClick={() => setOpenAt(null)}><Icon name="lock" />Tài khoản đã chặn</Link>
         <Link className="account-action" to="/settings/account" onClick={() => { setOpenAt(null); trigger.current?.focus() }}><Icon name="settings" />Cài đặt tài khoản</Link>
       </nav>

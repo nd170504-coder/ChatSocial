@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { blocksApi, type BlockStatus } from './api'
 import { RecallPopover } from '../chat/RecallPopover'
 import { useChat } from '../chat/ChatProvider'
 import './blocks.css'
 
-export function BlockButton({ userId, fullName, initiallyBlocked, onUpdated }: { userId: string; fullName: string; initiallyBlocked?: boolean; onUpdated?: () => void }) {
+export function BlockButton({ userId, fullName, initiallyBlocked, onUpdated, label, onBusyChange, disabled = false, leadingIcon }: { userId: string; fullName: string; initiallyBlocked?: boolean; onUpdated?: () => void; label?: string; onBusyChange?: (busy: boolean) => void; disabled?: boolean; leadingIcon?: ReactNode }) {
   const { relationshipsChanged } = useChat()
   const [status, setStatus] = useState<BlockStatus | null>(initiallyBlocked === undefined ? null : { userId, blockedByMe: initiallyBlocked, interactionBlocked: initiallyBlocked })
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null)
@@ -22,18 +23,18 @@ export function BlockButton({ userId, fullName, initiallyBlocked, onUpdated }: {
   }, [userId, attempt, initiallyBlocked])
 
   async function confirm() {
-    if (locked.current || !status) return
-    locked.current = true; setBusy(true); setError('')
+    if (locked.current || !status || disabled) return
+    locked.current = true; setBusy(true); onBusyChange?.(true); setError('')
     try {
       await blocksApi.change(userId, !status.blockedByMe)
       if (active.current) { setAnchor(null); onUpdated?.(); relationshipsChanged() }
     } catch { if (active.current) setError('Chưa cập nhật được. Vui lòng thử lại.') }
-    finally { locked.current = false; if (active.current) setBusy(false) }
+    finally { locked.current = false; if (active.current) { setBusy(false); onBusyChange?.(false) } }
   }
   return <div className="block-action">
     {!status ? error ? <button className="block-button" type="button" onClick={() => { setError(''); setAttempt(value => value + 1) }}>Thử lại trạng thái chặn</button> : <span className="block-loading">Đang tải…</span>
-      : <button className="block-button" type="button" disabled={busy} aria-haspopup="dialog" aria-expanded={!!anchor} aria-controls={anchor ? id : undefined}
-        onClick={event => { setError(''); setAnchor(anchor ? null : event.currentTarget) }}>{status.blockedByMe ? 'Bỏ chặn' : 'Chặn'}</button>}
+      : <button className="block-button" type="button" disabled={busy || disabled} aria-haspopup="dialog" aria-expanded={!!anchor} aria-controls={anchor ? id : undefined}
+        onClick={event => { setError(''); setAnchor(anchor ? null : event.currentTarget) }}>{leadingIcon}{label || (status.blockedByMe ? 'Bỏ chặn' : 'Chặn')}</button>}
     {anchor && status && <RecallPopover id={id} anchor={anchor} busy={busy} error={error} onCancel={cancel} onConfirm={() => void confirm()}
       title={`${status.blockedByMe ? 'Bỏ chặn' : 'Chặn'} ${fullName}?`}
       description={status.blockedByMe ? 'Bỏ chặn không tự khôi phục kết bạn.' : 'Hai người sẽ hủy kết bạn và không thể liên hệ hoặc xem bài viết của nhau.'}

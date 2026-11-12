@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PostLikeRepository extends JpaRepository<PostLike, String> {
 
+    @Query("select count(pl) from PostLike pl where pl.post.user.id = :userId and pl.user.id <> :userId")
+    long countReceivedLikes(@Param("userId") String userId);
+
     @Modifying
     @Query("delete from PostLike pl where pl.post.id = :postId")
     void deleteAllByPostId(@Param("postId") String postId);

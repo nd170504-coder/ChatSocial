@@ -16,6 +16,8 @@ import java.util.Optional;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, String> {
+    long countByUserId(String userId);
+
     @Query("select p.user.id from Post p where p.id = :postId")
     Optional<String> findAuthorId(@Param("postId") String postId);
 

@@ -35,7 +35,9 @@ public class UserProfileService {
                 profile == null ? user.getUsername() : profile.getFullName(),
                 profile == null ? null : profile.getAvatarUrl(),
                 profile == null ? null : profile.getCoverUrl(),
-                profile == null ? null : profile.getBio(), relationship.status(), relationship.requestId());
+                profile == null ? null : profile.getBio(), relationship.status(), relationship.requestId(),
+                profile == null ? null : profile.getDateOfBirth(),
+                profile == null ? null : profile.getGender());
     }
 
     private RelationshipInfo relationship(String viewerId, String userId) {

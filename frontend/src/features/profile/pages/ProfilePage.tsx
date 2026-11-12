@@ -9,7 +9,8 @@ import { ImageUploadDialog } from '../components/ImageUploadDialog'
 import { ProfileForm } from '../components/ProfileForm'
 import type { useProfile } from '../hooks/useProfile'
 import type { ProfileImageType } from '../types'
-import { formatBirthDate, genderLabels } from '../utils'
+import { ProfileTabs } from '../components/ProfileTabs'
+import { ProfileAbout } from '../components/ProfileAbout'
 import '../profile.css'
 
 export function ProfilePage({ editing = false }: { editing?: boolean }) {
@@ -19,6 +20,7 @@ export function ProfilePage({ editing = false }: { editing?: boolean }) {
   const [uploadNotice, setUploadNotice] = useState<{ key: string; text: string } | null>(null)
   const [failedCover, setFailedCover] = useState<string | null>(null)
   const location = useLocation()
+  const about = location.hash === '#about'
   const routeNotice = (location.state as { notice?: string } | null)?.notice
   const notice = uploadNotice?.key === location.key ? uploadNotice.text : ''
 
@@ -40,13 +42,11 @@ export function ProfilePage({ editing = false }: { editing?: boolean }) {
         <div className="identity-text"><h2>{profile.fullName}</h2><p>@{session!.user.username}</p>{!editing && <FriendCount key={profile.userId} userId={profile.userId} linkToList />}</div>
         {!editing && <Link className="button button-secondary profile-edit-button" to="/profile/edit"><Icon name="edit" />Chỉnh sửa hồ sơ</Link>}
       </div>
-      {!editing && <nav className="profile-section-nav" aria-label="Nội dung trang cá nhân"><a href="#posts"><Icon name="edit" />Bài viết</a><a href="#about"><Icon name="user" />Giới thiệu</a></nav>}
+      {!editing && <ProfileTabs />}
     </section>
-    {editing ? <ProfileForm key={profile.userId} profile={profile} onSaved={updateProfile} /> : <div id="about" className="profile-details-grid">
-      <section className="profile-card bio-card"><div className="profile-card-heading"><h2>Đôi điều về tôi</h2><span className="card-heading-icon"><Icon name="user" /></span></div>{profile.bio ? <p className="profile-bio">{profile.bio}</p> : <div className="profile-empty"><span aria-hidden="true">“</span><p>Mỗi người đều có một câu chuyện.<br />Câu chuyện của bạn là gì?</p><Link to="/profile/edit">Thêm lời giới thiệu →</Link></div>}</section>
-      <section className="profile-card info-card"><div className="profile-card-heading"><h2>Thông tin cá nhân</h2><span className="card-heading-icon"><Icon name="mail" /></span></div><dl className="profile-info"><div><dt>Email</dt><dd>{session!.user.email}</dd></div><div><dt>Ngày sinh</dt><dd className={!profile.dateOfBirth ? 'empty-value' : ''}>{profile.dateOfBirth ? formatBirthDate(profile.dateOfBirth) : 'Chưa chia sẻ'}</dd></div><div><dt>Giới tính</dt><dd className={!profile.gender ? 'empty-value' : ''}>{profile.gender ? genderLabels[profile.gender] : 'Chưa chia sẻ'}</dd></div></dl></section>
-    </div>}
-    {!editing && <PostSection key={session!.user.id} userId={session!.user.id} name={profile.fullName} avatarUrl={profile.avatarUrl} />}
+    {editing ? <ProfileForm key={profile.userId} profile={profile} onSaved={updateProfile} />
+      : about ? <ProfileAbout profile={profile} email={session!.user.email} />
+      : <PostSection key={session!.user.id} userId={session!.user.id} name={profile.fullName} avatarUrl={profile.avatarUrl} />}
     <footer className="profile-footer">Một hồ sơ mang dấu ấn của bạn.<span>ChatSocial</span></footer>
     {uploadType && <ImageUploadDialog type={uploadType} onDismiss={() => setUploadType(null)} onSaved={updated => {
       updateProfile(updated)
