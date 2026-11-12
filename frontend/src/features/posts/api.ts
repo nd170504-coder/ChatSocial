@@ -2,6 +2,12 @@ import { authenticatedBlobRequest, authenticatedRequest } from '../auth/session'
 import type { CommentCount, CommentPage, Post, PostComment, PostLikeStatus, PostPage, PostValues } from './types'
 
 export const postApi = {
+  replies: (postId: string, parentId: string, page = 0, signal?: AbortSignal) => authenticatedRequest<CommentPage>(
+    `/post/${encodeURIComponent(postId)}/comments/${encodeURIComponent(parentId)}/replies?page=${page}&size=10`, { signal },
+  ),
+  createReply: (postId: string, parentId: string, content: string) => authenticatedRequest<PostComment>(
+    `/post/${encodeURIComponent(postId)}/comments/${encodeURIComponent(parentId)}/replies`, { method: 'POST', body: JSON.stringify({ content }) },
+  ),
   comments: (postId: string, page = 0, signal?: AbortSignal) => authenticatedRequest<CommentPage>(
     `/post/${encodeURIComponent(postId)}/comments?page=${page}&size=10`, { signal },
   ),

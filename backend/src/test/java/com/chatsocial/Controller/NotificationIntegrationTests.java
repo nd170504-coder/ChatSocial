@@ -66,6 +66,23 @@ class NotificationIntegrationTests {
     final ObjectMapper json = new ObjectMapper();
 
     @Test
+    void replyNotificationReachesParentAuthorOverWebSocket() throws Exception {
+        User owner = user(), parentAuthor = user(), replier = user();
+        Post post = posts.saveAndFlush(Post.builder().user(owner).content("Public").privacy(PostPrivacy.PUBLIC).build());
+        var parent = postService.createComment(parentAuthor.getId(), post.getId(),
+                new com.chatsocial.dto.comment.CreateCommentRequest("Root"));
+        try (Socket socket = connect(login(parentAuthor).getAccessToken())) {
+            subscribe(socket, parentAuthor.getId());
+            postService.createReply(replier.getId(), post.getId(), parent.id(),
+                    new com.chatsocial.dto.comment.CreateCommentRequest("Reply"));
+            var data = json.readTree(socket.next().split("\n\n", 2)[1]);
+            assertTrue(data.toString().contains("POST_COMMENTED"));
+            assertTrue(data.toString().contains(post.getId()));
+            assertNull(socket.frames.poll(250, TimeUnit.MILLISECONDS));
+        }
+    }
+
+    @Test
     void blockingRefreshesBothChatsWithoutSendingABlockNotification() throws Exception {
         User a = user(), b = user();
         friendships.saveAndFlush(new com.chatsocial.entity.Friendship(a, b));

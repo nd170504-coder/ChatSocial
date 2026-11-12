@@ -117,6 +117,22 @@ describe('Post API contract', () => {
     for (const [, options] of fetchMock.mock.calls.slice(1)) expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer old-access')
   })
 
+  it('loads and creates replies under the encoded parent with authentication', async () => {
+    await login()
+    const { postApi } = await import('../src/features/posts/api')
+    const signal = new AbortController().signal
+    fetchMock.mockResolvedValueOnce(response({ items: [], page: 1, size: 10, hasNext: false }))
+      .mockResolvedValueOnce(response({ id: 'reply', parentCommentId: 'parent/1' }))
+    await postApi.replies('post/1', 'parent/1', 1, signal)
+    await postApi.createReply('post/1', 'parent/1', 'Cảm ơn bạn!')
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/post\/post%2F1\/comments\/parent%2F1\/replies\?page=1&size=10$/)
+    expect(fetchMock.mock.calls[1][1]?.signal).toBe(signal)
+    expect(String(fetchMock.mock.calls[2][0])).toMatch(/\/post\/post%2F1\/comments\/parent%2F1\/replies$/)
+    expect(fetchMock.mock.calls[2][1]?.method).toBe('POST')
+    expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({ content: 'Cảm ơn bạn!' })
+    for (const [, options] of fetchMock.mock.calls.slice(1)) expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer old-access')
+  })
+
   it('uses the backend pagination and PATCH/DELETE endpoints', async () => {
     await login()
     const { postApi } = await import('../src/features/posts/api')

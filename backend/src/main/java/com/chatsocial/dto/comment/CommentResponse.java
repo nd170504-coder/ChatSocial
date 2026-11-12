@@ -9,5 +9,8 @@ public record CommentResponse(
         String fullName,
         String avatarUrl,
         String content,
-        Instant createdAt
+        Instant createdAt,
+        String parentCommentId,
+        long replyCount,
+        boolean canReply
 ) {}

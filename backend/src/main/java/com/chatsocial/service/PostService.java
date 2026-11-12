@@ -26,12 +26,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -167,6 +165,7 @@ public class PostService {
             }
             // Scalar projection avoids keeping bulk-deleted media managed while removing their parent.
             List<String> mediaPaths = postMediaRepository.findStoragePathsByPostId(postId);
+            commentRepository.deleteRepliesByPostId(postId);
             commentRepository.deleteAllByPostId(postId);
             postLikeRepository.deleteAllByPostId(postId);
             postMediaRepository.deleteAllByPostId(postId);
@@ -293,10 +292,11 @@ public class PostService {
         };
     }
 
-    private void lockInteractionUsers(String viewerId, String postId) {
+    private void lockInteractionUsers(String viewerId, String postId, String... otherUserIds) {
         String authorId = postRepository.findAuthorId(postId).orElseThrow(this::postNotFound);
-        for (String id : java.util.stream.Stream.of(viewerId, authorId).distinct().sorted().toList()) {
-            userRepository.findForUpdateById(id).orElseThrow(this::postNotFound);
+        for (String id : Stream.concat(Stream.of(viewerId, authorId), Arrays.stream(otherUserIds)).distinct().sorted().toList()) {
+            userRepository.findForUpdateById(id)
+                    .orElseThrow(this::postNotFound);
         }
     }
 
@@ -388,7 +388,7 @@ public class PostService {
         var comments = commentRepository.findVisibleComments(postId, UserStatus.ACTIVE, pageable);
 
         var items = comments.getContent().stream()
-                .map(this::toCommentResponse)
+                .map(comment -> toCommentResponse(comment, currentUserId))
                 .toList();
 
         return new CommentPageResponse(
@@ -430,7 +430,44 @@ public class PostService {
                 NotificationType.POST_COMMENTED
         );
 
-        return toCommentResponse(comment);
+        return toCommentResponse(comment, currentUserId);
+    }
+
+    @Transactional(readOnly = true)
+    public CommentPageResponse getReplies(String currentUserId, String postId, String parentId, int page, int size) {
+        getPostForComment(currentUserId, postId, false);
+        replyParent(currentUserId, postId, parentId);
+        if (page < 0 || size < 1 || size > 50) throw new ApiException(HttpStatus.BAD_REQUEST, "Phân trang không hợp lệ");
+        var result = commentRepository.findReplies(postId, parentId, UserStatus.ACTIVE,
+                PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
+        var items = result.getContent().stream().map(comment -> toCommentResponse(comment, currentUserId)).toList();
+        return new CommentPageResponse(items, result.getNumber(), result.getSize(), result.hasNext());
+    }
+
+    @Transactional
+    public CommentResponse createReply(String currentUserId, String postId, String parentId, CreateCommentRequest request) {
+        String parentAuthorId = commentRepository.findAuthorId(parentId, postId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bình luận"));
+        // Lock every involved user in the same order as blocking, before locking the post.
+        Post post = getPostForComment(currentUserId, postId, true, parentAuthorId);
+        Comment parent = replyParent(currentUserId, postId, parentId);
+        User user = userRepository.findById(currentUserId).filter(value -> value.getStatus() == UserStatus.ACTIVE)
+                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không còn hoạt động"));
+        String content = request.content().strip();
+        if (content.isBlank() || content.length() > 2000) throw new ApiException(HttpStatus.BAD_REQUEST, "Câu trả lời phải có từ 1 đến 2.000 ký tự");
+        Comment reply = commentRepository.saveAndFlush(new Comment(null, post, user, parent, content, null, null));
+        // One recipient only: the parent author. Self replies are suppressed by NotificationService.
+        notificationService.create(parent.getUser(), user, post, NotificationType.POST_COMMENTED);
+        return toCommentResponse(reply, currentUserId);
+    }
+
+    private Comment replyParent(String currentUserId, String postId, String parentId) {
+        Comment parent = commentRepository.findByIdAndPostId(parentId, postId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bình luận"));
+        if (parent.getParentComment() != null) throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ hỗ trợ trả lời bình luận gốc");
+        if (parent.getUser().getStatus() != UserStatus.ACTIVE) throw new ApiException(HttpStatus.NOT_FOUND, "Bình luận không khả dụng");
+        blockPolicy.requireVisible(currentUserId, parent.getUser().getId());
+        return parent;
     }
 
     @Transactional
@@ -454,8 +491,8 @@ public class PostService {
         return buildCommentCount(postId);
     }
 
-    private Post getPostForComment(String currentUserId, String postId, boolean forUpdate) {
-        if (forUpdate) lockInteractionUsers(currentUserId, postId);
+    private Post getPostForComment(String currentUserId, String postId, boolean forUpdate, String... otherUserIds) {
+        if (forUpdate) lockInteractionUsers(currentUserId, postId, otherUserIds);
         var result = forUpdate
                 ? postRepository.findForUpdateById(postId)
                 : postRepository.findById(postId);
@@ -474,7 +511,7 @@ public class PostService {
         return new CommentCountResponse(postId, count);
     }
 
-    private CommentResponse toCommentResponse(Comment comment) {
+    private CommentResponse toCommentResponse(Comment comment, String viewerId) {
         User user = comment.getUser();
 
         UserProfile profile = userProfileRepository.findByUserId(user.getId())
@@ -487,7 +524,10 @@ public class PostService {
                 profile == null ? user.getUsername() : profile.getFullName(),
                 profile == null ? null : profile.getAvatarUrl(),
                 comment.getContent(),
-                comment.getCreatedAt()
+                comment.getCreatedAt(),
+                comment.getParentComment() == null ? null : comment.getParentComment().getId(),
+                comment.getParentComment() == null ? commentRepository.countByParentCommentIdAndUserStatus(comment.getId(), UserStatus.ACTIVE) : 0,
+                comment.getParentComment() == null && user.getStatus() == UserStatus.ACTIVE && !blockPolicy.between(viewerId, user.getId())
         );
     }
 

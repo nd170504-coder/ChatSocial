@@ -8,6 +8,9 @@ export interface PostComment {
   avatarUrl: string | null
   content: string
   createdAt: string
+  parentCommentId: string | null
+  replyCount: number
+  canReply: boolean
 }
 
 export interface CommentPage {

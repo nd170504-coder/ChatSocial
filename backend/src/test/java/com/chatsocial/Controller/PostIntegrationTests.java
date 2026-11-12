@@ -48,6 +48,7 @@ class PostIntegrationTests {
     @Autowired CommentRepository comments;
     @Autowired NotificationRepository notifications;
     @Autowired PostLikeRepository likes;
+    @Autowired UserBlockRepository blocks;
     @MockitoSpyBean PostMediaRepository media;
     @MockitoBean SupabaseStorageService storage;
     @MockitoBean JavaMailSender mailSender;
@@ -61,11 +62,12 @@ class PostIntegrationTests {
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         notifications.deleteAll();
-        comments.deleteAll();
+        comments.deleteAllInBatch();
         likes.deleteAll();
         media.deleteAll();
         posts.deleteAll();
         friendships.deleteAll();
+        blocks.deleteAll();
         profiles.deleteAll();
         users.deleteAll();
         author = user("author");
@@ -261,6 +263,84 @@ class PostIntegrationTests {
                 .andExpect(jsonPath("$.data.items[0].id").value(publicId));
         mvc.perform(delete("/api/friends/{id}", viewer.getId()).with(jwt().jwt(token -> token.subject(author.getId()))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void repliesStayInTheirThreadAndNotifyOnlyTheParentAuthor() throws Exception {
+        String id = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        User parentAuthor = user("parent"), replier = user("replier");
+        Post post = posts.findById(id).orElseThrow();
+        var parent = comments.saveAndFlush(new com.chatsocial.entity.Comment(null, post, parentAuthor, null, "Root", null, null));
+        String url = "/api/post/" + id + "/comments";
+        String repliesUrl = url + "/" + parent.getId() + "/replies";
+        String body = mvc.perform(post(repliesUrl).with(jwt().jwt(t -> t.subject(replier.getId())))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"  Reply  \"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.content").value("Reply"))
+                .andExpect(jsonPath("$.data.parentCommentId").value(parent.getId()))
+                .andExpect(jsonPath("$.data.canReply").value(false)).andReturn().getResponse().getContentAsString();
+        String replyId = json.readTree(body).get("data").get("id").asText();
+        assertEquals(1, notifications.count());
+        assertEquals(parentAuthor.getId(), notifications.findAll().get(0).getRecipient().getId());
+        mvc.perform(get(url).with(jwt().jwt(t -> t.subject(replier.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].replyCount").value(1));
+        mvc.perform(get(url + "/count").with(jwt().jwt(t -> t.subject(replier.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(2));
+        mvc.perform(delete(url + "/" + parent.getId()).with(jwt().jwt(t -> t.subject(parentAuthor.getId()))))
+                .andExpect(status().isConflict());
+        mvc.perform(post(url + "/" + replyId + "/replies").with(jwt().jwt(t -> t.subject(replier.getId())))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Nested\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(delete(url + "/" + replyId).with(jwt().jwt(t -> t.subject(parentAuthor.getId()))))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(url + "/" + replyId).with(jwt().jwt(t -> t.subject(replier.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(1));
+        mvc.perform(post(repliesUrl).with(jwt().jwt(t -> t.subject(parentAuthor.getId())))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Self\"}"))
+                .andExpect(status().isCreated());
+        assertEquals(1, notifications.count());
+        mvc.perform(delete("/api/post/" + id).with(jwt().jwt(t -> t.subject(author.getId()))))
+                .andExpect(status().isOk());
+        assertEquals(0, comments.count());
+    }
+
+    @Test
+    void repliesEnforceVisibilityParentScopeBlockingAndPagination() throws Exception {
+        String id = create("{\"content\":\"Public\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        User parentAuthor = user("parent"), viewer = user("viewer");
+        Post post = posts.findById(id).orElseThrow();
+        var parent = comments.saveAndFlush(new com.chatsocial.entity.Comment(null, post, parentAuthor, null, "Root", null, null));
+        for (int i = 0; i < 3; i++) comments.saveAndFlush(new com.chatsocial.entity.Comment(null, post, viewer, parent, "Reply " + i, null, null));
+        String url = "/api/post/" + id + "/comments/" + parent.getId() + "/replies";
+        mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        mvc.perform(get(url).param("size", "2").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].parentCommentId").value(parent.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        mvc.perform(get(url).param("size", "2").param("page", "1").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        mvc.perform(get(url).param("page", "-1").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                .andExpect(status().isBadRequest());
+        for (String content : new String[]{" ", "x".repeat(2001)}) {
+            mvc.perform(post(url).with(jwt().jwt(t -> t.subject(viewer.getId()))).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(java.util.Map.of("content", content)))).andExpect(status().isBadRequest());
+        }
+        String otherId = create("{\"content\":\"Other\",\"privacy\":\"PUBLIC\"}").get("id").asText();
+        mvc.perform(get(url.replace(id, otherId)).with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                .andExpect(status().isNotFound());
+        blocks.saveAndFlush(new com.chatsocial.entity.UserBlock(parentAuthor, viewer));
+        for (var request : java.util.List.of(get(url), post(url).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"Blocked\"}"))) {
+            mvc.perform(request.with(jwt().jwt(t -> t.subject(viewer.getId())))).andExpect(status().isNotFound());
+        }
+        blocks.deleteAll();
+        patchPost(id, "{\"privacy\":\"PRIVATE\"}", 200);
+        mvc.perform(get(url).with(jwt().jwt(t -> t.subject(viewer.getId())))).andExpect(status().isNotFound());
+        patchPost(id, "{\"privacy\":\"PUBLIC\"}", 200);
+        parentAuthor.setStatus(UserStatus.DISABLED); users.saveAndFlush(parentAuthor);
+        mvc.perform(get(url).with(jwt().jwt(t -> t.subject(viewer.getId())))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/post/" + id + "/comments/count").with(jwt().jwt(t -> t.subject(viewer.getId()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commentCount").value(0));
     }
 
     @Test

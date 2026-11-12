@@ -159,6 +159,21 @@ public class PostController {
         return ResponseEntity.ok(ApiResponse.success("Comments retrieved successfully", response));
     }
 
+    @GetMapping("/{postId}/comments/{commentId}/replies")
+    public ResponseEntity<ApiResponse<CommentPageResponse>> getReplies(
+            @PathVariable("postId") String postId, @PathVariable("commentId") String commentId,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
+        return ResponseEntity.ok(ApiResponse.success("Replies retrieved", postService.getReplies(SecurityUtils.getCurrentUserId(), postId, commentId, page, size)));
+    }
+
+    @PostMapping("/{postId}/comments/{commentId}/replies")
+    public ResponseEntity<ApiResponse<CommentResponse>> createReply(
+            @PathVariable("postId") String postId, @PathVariable("commentId") String commentId,
+            @Valid @RequestBody CreateCommentRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Reply created", postService.createReply(SecurityUtils.getCurrentUserId(), postId, commentId, request)));
+    }
+
     @GetMapping("/{postId}/comments/count")
     @Operation(summary = "Đếm số bình luận")
     public ResponseEntity<ApiResponse<CommentCountResponse>> getCommentCount(@PathVariable("postId") String postId) {

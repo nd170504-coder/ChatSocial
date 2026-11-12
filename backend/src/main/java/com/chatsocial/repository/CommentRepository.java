@@ -16,6 +16,10 @@ import java.util.Optional;
 public interface CommentRepository extends JpaRepository<Comment, String> {
 
     @Modifying
+    @Query("delete from Comment c where c.post.id = :postId and c.parentComment is not null")
+    void deleteRepliesByPostId(@Param("postId") String postId);
+
+    @Modifying
     @Query("delete from Comment c where c.post.id = :postId")
     void deleteAllByPostId(@Param("postId") String postId);
 
@@ -23,6 +27,7 @@ public interface CommentRepository extends JpaRepository<Comment, String> {
         select c from Comment c
         join fetch c.user author
         where c.post.id = :postId
+          and c.parentComment is null
           and author.status = :status
         """)
     Slice<Comment> findVisibleComments(
@@ -31,7 +36,24 @@ public interface CommentRepository extends JpaRepository<Comment, String> {
             Pageable pageable
     );
 
-    long countByPostIdAndUserStatus(String postId, UserStatus status);
+    @Query("""
+        select count(c) from Comment c left join c.parentComment parent left join parent.user parentAuthor
+        where c.post.id = :postId and c.user.status = :status
+          and (parent is null or parentAuthor.status = :status)
+        """)
+    long countByPostIdAndUserStatus(@Param("postId") String postId, @Param("status") UserStatus status);
+
+    @Query("""
+        select c from Comment c join fetch c.user author
+        where c.post.id = :postId and c.parentComment.id = :parentId and author.status = :status
+        """)
+    Slice<Comment> findReplies(@Param("postId") String postId, @Param("parentId") String parentId,
+                               @Param("status") UserStatus status, Pageable pageable);
+
+    long countByParentCommentIdAndUserStatus(String parentId, UserStatus status);
+
+    @Query("select c.user.id from Comment c where c.id = :id and c.post.id = :postId")
+    Optional<String> findAuthorId(@Param("id") String id, @Param("postId") String postId);
 
     Optional<Comment> findByIdAndPostId(String commentId, String postId);
 
