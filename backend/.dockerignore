@@ -1,0 +1,10 @@
+.git
+target
+.env
+.env.*
+**/.env
+**/.env.*
+**/application-local.*
+**/LocalAdminBootstrapService*.java
+*.log
+.idea
