@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -51,7 +51,7 @@ class PostIntegrationTests {
     @Autowired UserBlockRepository blocks;
     @MockitoSpyBean PostMediaRepository media;
     @MockitoBean SupabaseStorageService storage;
-    @MockitoBean JavaMailSender mailSender;
+    @MockitoBean BrevoEmailClient mailSender;
     private final ObjectMapper json = new ObjectMapper();
     private MockMvc mvc;
     private User author;

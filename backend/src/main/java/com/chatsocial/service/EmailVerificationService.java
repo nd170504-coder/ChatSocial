@@ -71,7 +71,7 @@ public class EmailVerificationService {
                     && verification.getSendCount() >= properties.getMaxSendsPerHour()) return null;
             return issue(verification, now);
         });
-        // Email is sent only after commit. SMTP failure leaves a recoverable pending account.
+        // Email is sent only after commit. Delivery failure leaves a recoverable pending account.
         if (code != null) deliver(code);
     }
 

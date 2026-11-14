@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -41,7 +41,7 @@ class ChatIntegrationTests {
     @Autowired UserRepository users;
     @Autowired FriendshipRepository friendships;
     @Autowired MessageRepository messages;
-    @MockitoBean JavaMailSender mail;
+    @MockitoBean BrevoEmailClient mail;
     @MockitoBean SupabaseStorageService storage;
     @MockitoSpyBean MessageMediaRepository media;
     final java.util.Map<String, byte[]> stored = new ConcurrentHashMap<>();

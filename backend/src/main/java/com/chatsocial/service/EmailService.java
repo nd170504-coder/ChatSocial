@@ -1,16 +1,10 @@
 package com.chatsocial.service;
 
 import com.chatsocial.exception.ApiException;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,13 +12,11 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
-    private final JavaMailSender sender;
-    private final String from;
+    private final BrevoEmailClient sender;
     private final String template;
 
-    public EmailService(JavaMailSender sender, @Value("${app.mail.from}") String from) throws IOException {
+    public EmailService(BrevoEmailClient sender) throws IOException {
         this.sender = sender;
-        this.from = from;
         this.template = new ClassPathResource("templates/mail/email-verification.html")
                 .getContentAsString(StandardCharsets.UTF_8);
     }
@@ -32,18 +24,12 @@ public class EmailService {
     public void sendVerificationEmail(String email, String otp, long ttlSeconds) {
         long minutes = (ttlSeconds + 59) / 60;
         try {
-            MimeMessage message = sender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(from, "ChatSocial");
-            helper.setTo(email);
-            helper.setSubject("ChatSocial - Xác minh tài khoản");
             String html = template.replace("{{OTP}}", otp).replace("{{MINUTES}}", Long.toString(minutes));
             String plain = "Mã xác minh ChatSocial của bạn: " + otp + ". Mã có hiệu lực " + minutes + " phút.";
-            helper.setText(plain, html);
-            sender.send(message);
-        } catch (MessagingException | IOException | MailException exception) {
-            // SMTP exceptions may contain credentials or message contents; do not log them.
-            log.warn("Verification email delivery failed ({})", exception.getClass().getSimpleName());
+            sender.send(new BrevoEmailClient.Email(email, "ChatSocial - Xác minh tài khoản", html, plain));
+        } catch (BrevoEmailClient.DeliveryException exception) {
+            // Never log credentials, recipients, OTPs or provider response bodies.
+            log.warn("Verification email delivery failed: {}", exception.getMessage());
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Unable to send verification email; please request a new code later");
         }
@@ -65,16 +51,10 @@ public class EmailService {
 
     private void sendPasswordEmail(String email, String subject, String text) {
         try {
-            MimeMessage message = sender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
-            helper.setFrom(from, "ChatSocial");
-            helper.setTo(email);
-            helper.setSubject(subject);
-            helper.setText(text);
-            sender.send(message);
-        } catch (MessagingException | IOException | MailException exception) {
+            sender.send(new BrevoEmailClient.Email(email, subject, null, text));
+        } catch (BrevoEmailClient.DeliveryException exception) {
             // Do not expose account existence on forgot-password or fail an already committed password change.
-            log.warn("Password email delivery failed ({})", exception.getClass().getSimpleName());
+            log.warn("Password email delivery failed: {}", exception.getMessage());
         }
     }
 

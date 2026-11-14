@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -47,7 +47,7 @@ class BlockIntegrationTests {
     @Autowired CommentRepository comments;
     @Autowired PostLikeRepository likes;
     @Autowired NotificationService notifications;
-    @MockitoBean JavaMailSender mail;
+    @MockitoBean BrevoEmailClient mail;
     @MockitoBean SupabaseStorageService storage;
     MockMvc mvc;
     User a, b, c;
