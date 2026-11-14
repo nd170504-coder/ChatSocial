@@ -1,6 +1,32 @@
 # ChatSocial
 Xây dựng mạng xã hội kết nối bạn bè và nhắn tin thời gian thực.
 
+## Email qua Brevo HTTPS API
+
+Backend gửi email xác minh, mã đặt lại mật khẩu và thông báo đổi mật khẩu qua
+`POST https://api.brevo.com/v3/smtp/email` (HTTPS, cổng 443), không dùng SMTP.
+Cấu hình ba biến sau trong `backend/.env` khi chạy local hoặc mục Environment
+của backend trên hosting:
+
+```dotenv
+BREVO_API_KEY=your-api-key
+BREVO_SENDER_EMAIL=your-verified-sender@example.com
+BREVO_SENDER_NAME=ChatSocial
+```
+
+Tạo API key với Restricted access và quyền Transactional email = All; xác minh
+sender trong Brevo. Không đưa key vào frontend hay Git. Backend tự nạp `.env`
+khi chạy từ thư mục repository hoặc thư mục `backend`; biến môi trường hệ thống
+có độ ưu tiên cao hơn file. Mẫu cấu hình không chứa key thật: `backend/.env.example`.
+Các biến `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`
+không còn được sử dụng. Thiếu key hoặc sender hợp lệ sẽ làm backend báo lỗi cấu hình.
+
+Sau khi khởi động lại backend, đăng ký tài khoản thử hoặc yêu cầu gửi lại OTP,
+kiểm tra hộp thư (kể cả Spam) và log Transactional trong Brevo. API nhận yêu cầu
+không đồng nghĩa email đã đến hộp thư; Brevo có thể áp dụng giới hạn tài khoản,
+quota hoặc yêu cầu xác thực miền gửi. Kiểm thử tự động chỉ dùng mock/server local,
+không gửi email thật. Quy tắc OTP, cooldown, giới hạn gửi và thời hạn mã được giữ nguyên.
+
 ## Quản trị người dùng
 
 Tài khoản có `role = ADMIN` có giao diện riêng, chỉ có hai mục Tổng quan và Quản trị

@@ -1,8 +1,4 @@
 spring:
-  mail:
-    host: localhost
-    username: no-reply@chatsocial.test
-    password: test-password
   datasource:
     url: jdbc:h2:mem:auth;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;INIT=CREATE SCHEMA IF NOT EXISTS chatsocial
     username: sa
@@ -13,8 +9,10 @@ spring:
       ddl-auto: create-drop
     show-sql: false
 app:
-  mail:
-    from: no-reply@chatsocial.test
+  brevo:
+    api-key: test-key-not-a-real-key
+    sender-email: no-reply@chatsocial.test
+    sender-name: ChatSocial Test
   email-verification:
     secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     ttl-seconds: 300

@@ -19,11 +19,8 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.mail.javamail.JavaMailSender;
-import jakarta.mail.internet.MimeMessage;
-import jakarta.mail.Session;
-import jakarta.mail.Multipart;
-import jakarta.mail.Part;
+import com.chatsocial.service.BrevoEmailClient;
+import com.chatsocial.service.BrevoEmailClient.Email;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.chatsocial.entity.UserProfile;
@@ -53,7 +50,7 @@ class AuthIntegrationTests {
     @Autowired UserRefreshTokenRepository refreshTokens;
     @Autowired EmailVerificationRepository verifications;
     @Autowired PasswordResetRepository resets;
-    @MockitoBean JavaMailSender mailSender;
+    @MockitoBean BrevoEmailClient mailSender;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtEncoder encoder;
     @Autowired JwtProperties jwtProperties;
@@ -63,7 +60,6 @@ class AuthIntegrationTests {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        when(mailSender.createMimeMessage()).thenAnswer(invocation -> new MimeMessage(Session.getInstance(new java.util.Properties())));
         refreshTokens.deleteAll();
         sessions.deleteAll();
         verifications.deleteAll();
@@ -73,17 +69,15 @@ class AuthIntegrationTests {
     }
 
     @Test
-    void registrationSendsMimeEmailAndRequiresVerificationBeforeLogin() throws Exception {
+    void registrationSendsHtmlEmailAndRequiresVerificationBeforeLogin() throws Exception {
         JsonNode pending = registerPending(" Alice@example.com ", "alice", "password123");
         assertEquals("PENDING_VERIFICATION", pending.get("status").asText());
         login("alice@example.com", "password123", 403);
         assertEquals(0, sessions.count());
-        MimeMessage message = lastEmail();
-        message.saveChanges();
-        assertTrue(message.isMimeType("multipart/*"));
-        assertEquals("ChatSocial - Xác minh tài khoản", message.getSubject());
-        assertEquals("alice@example.com", message.getAllRecipients()[0].toString());
-        String contents = emailContents(message);
+        Email message = lastEmail();
+        assertEquals("ChatSocial - Xác minh tài khoản", message.subject());
+        assertEquals("alice@example.com", message.to());
+        String contents = message.htmlContent();
         assertTrue(contents.contains("<html"));
         assertTrue(contents.contains("Xác minh địa chỉ email"));
         assertTrue(contents.contains("5 phút"));
@@ -133,7 +127,7 @@ class AuthIntegrationTests {
         JsonNode pending = registerPending("alice@example.com", "alice", "password123");
         String oldCode = lastOtp();
         resend("alice@example.com", 202);
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        verify(mailSender, times(1)).send(any(Email.class));
         var verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
         verification.setLastSentAt(Instant.now().minusSeconds(61));
         verifications.saveAndFlush(verification);
@@ -146,7 +140,7 @@ class AuthIntegrationTests {
         verification.setLastSentAt(Instant.now().minusSeconds(61));
         verifications.saveAndFlush(verification);
         resend("alice@example.com", 202);
-        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        verify(mailSender, times(2)).send(any(Email.class));
         verification = verifications.findByUserId(pending.get("id").asText()).orElseThrow();
         verification.setSendWindowStartedAt(Instant.now().minusSeconds(3601));
         verifications.saveAndFlush(verification);
@@ -158,7 +152,7 @@ class AuthIntegrationTests {
     @Test
     void resendForMissingOrVerifiedOrDisabledAccountDoesNotSendEmail() throws Exception {
         resend("missing@example.com", 202);
-        verify(mailSender, never()).send(any(MimeMessage.class));
+        verify(mailSender, never()).send(any(Email.class));
         register("alice@example.com", "alice", "password123");
         resend("alice@example.com", 202);
         var user = users.findByEmail("alice@example.com").orElseThrow();
@@ -166,13 +160,13 @@ class AuthIntegrationTests {
         users.saveAndFlush(user);
         resend("alice@example.com", 202);
         verifyEmail("alice@example.com", lastOtp(), 400);
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        verify(mailSender, times(1)).send(any(Email.class));
     }
 
     @Test
-    void smtpFailureKeepsPendingAccountAndCanRecoverThroughResend() throws Exception {
-        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
-                .when(mailSender).send(any(MimeMessage.class));
+    void brevoFailureKeepsPendingAccountAndCanRecoverThroughResend() throws Exception {
+        doThrow(new BrevoEmailClient.DeliveryException())
+                .when(mailSender).send(any(Email.class));
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(registration("alice@example.com", "alice", "password123")))
                 .andExpect(status().isServiceUnavailable())
@@ -183,7 +177,7 @@ class AuthIntegrationTests {
         var verification = verifications.findByUserId(user.getId()).orElseThrow();
         verification.setLastSentAt(Instant.now().minusSeconds(61));
         verifications.saveAndFlush(verification);
-        doNothing().when(mailSender).send(any(MimeMessage.class));
+        doNothing().when(mailSender).send(any(Email.class));
         resend("alice@example.com", 202);
         verifyEmail("alice@example.com", lastOtp(), 200);
         login("alice@example.com", "password123", 200);
@@ -242,27 +236,18 @@ class AuthIntegrationTests {
                 .andExpect(status().is(expectedStatus));
     }
 
-    private MimeMessage lastEmail() {
-        var captor = ArgumentCaptor.forClass(MimeMessage.class);
+    private Email lastEmail() {
+        var captor = ArgumentCaptor.forClass(Email.class);
         verify(mailSender, atLeastOnce()).send(captor.capture());
         return captor.getValue();
     }
 
     private String lastOtp() throws Exception {
-        var match = java.util.regex.Pattern.compile("(?<![0-9])[0-9]{6}(?![0-9])").matcher(emailContents(lastEmail()));
-        assertTrue(match.find(), "MIME email must contain a six-digit code");
+        var message = lastEmail();
+        String content = message.htmlContent() == null ? message.textContent() : message.htmlContent();
+        var match = java.util.regex.Pattern.compile("(?<![0-9])[0-9]{6}(?![0-9])").matcher(content);
+        assertTrue(match.find(), "Email must contain a six-digit code");
         return match.group();
-    }
-
-    private String emailContents(Part part) throws Exception {
-        Object content = part.getContent();
-        if (content instanceof String text) return text;
-        if (content instanceof Multipart multipart) {
-            StringBuilder text = new StringBuilder();
-            for (int i = 0; i < multipart.getCount(); i++) text.append(emailContents(multipart.getBodyPart(i)));
-            return text.toString();
-        }
-        return "";
     }
 
     @Test
@@ -729,7 +714,7 @@ class AuthIntegrationTests {
         resetPassword("alice@example.com", code, "anotherPassword123", "anotherPassword123", 400);
         login("alice@example.com", "password123", 401);
         login("alice@example.com", " newPassword123 ", 200);
-        assertEquals("ChatSocial - Mật khẩu đã thay đổi", lastEmail().getSubject());
+        assertEquals("ChatSocial - Mật khẩu đã thay đổi", lastEmail().subject());
     }
 
     @Test
@@ -747,7 +732,7 @@ class AuthIntegrationTests {
         mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + auth.get("accessToken").asText()))
                 .andExpect(status().isOk());
         login("alice@example.com", "password123", 200);
-        verify(mailSender, times(1)).send(any(MimeMessage.class));
+        verify(mailSender, times(1)).send(any(Email.class));
     }
 
     @Test
@@ -785,7 +770,7 @@ class AuthIntegrationTests {
         }
         resetPassword("alice@example.com", code, "newPassword123", "newPassword123", 429);
         forgotPassword("alice@example.com");
-        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        verify(mailSender, times(2)).send(any(Email.class));
         var reset = resets.findByUserId(id).orElseThrow();
         reset.setLastSentAt(Instant.now().minusSeconds(61));
         resets.saveAndFlush(reset);
@@ -799,11 +784,11 @@ class AuthIntegrationTests {
         reset.setLastSentAt(Instant.now().minusSeconds(61));
         resets.saveAndFlush(reset);
         forgotPassword("alice@example.com");
-        verify(mailSender, times(3)).send(any(MimeMessage.class));
+        verify(mailSender, times(3)).send(any(Email.class));
         reset.setSendWindowStartedAt(Instant.now().minusSeconds(3601));
         resets.saveAndFlush(reset);
         forgotPassword("alice@example.com");
-        verify(mailSender, times(4)).send(any(MimeMessage.class));
+        verify(mailSender, times(4)).send(any(Email.class));
         assertEquals(1, resets.findByUserId(id).orElseThrow().getSendCount());
         resetPassword("alice@example.com", lastOtp(), "newPassword123", "newPassword123", 200);
     }
@@ -835,8 +820,8 @@ class AuthIntegrationTests {
         assertEquals(0, resets.count());
         resetPassword("alice@example.com", verificationCode, "newPassword123", "newPassword123", 400);
         verifyEmail("alice@example.com", verificationCode, 200);
-        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
-                .when(mailSender).send(any(MimeMessage.class));
+        doThrow(new BrevoEmailClient.DeliveryException())
+                .when(mailSender).send(any(Email.class));
         forgotPassword("alice@example.com");
         assertEquals(1, resets.count());
         var user = users.findByEmail("alice@example.com").orElseThrow();
@@ -844,15 +829,15 @@ class AuthIntegrationTests {
         users.saveAndFlush(user);
         forgotPassword("alice@example.com");
         resetPassword("alice@example.com", lastOtp(), "newPassword123", "newPassword123", 400);
-        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        verify(mailSender, times(2)).send(any(Email.class));
     }
 
     @Test
     void notificationFailureDoesNotUndoPasswordChange() throws Exception {
         register("alice@example.com", "alice", "password123");
         JsonNode auth = login("alice@example.com", "password123", 200);
-        doThrow(new org.springframework.mail.MailSendException("private SMTP detail"))
-                .when(mailSender).send(any(MimeMessage.class));
+        doThrow(new BrevoEmailClient.DeliveryException())
+                .when(mailSender).send(any(Email.class));
         changePassword(auth, "password123", "newPassword123", "newPassword123", 200);
         login("alice@example.com", "newPassword123", 200);
         refresh(auth.get("refreshToken").asText(), 401);

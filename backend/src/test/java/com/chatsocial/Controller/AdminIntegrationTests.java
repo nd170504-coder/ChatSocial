@@ -8,7 +8,7 @@ import com.chatsocial.service.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -31,7 +31,7 @@ class AdminIntegrationTests {
     @Autowired AuthService auth;
     @Autowired AdminService adminService;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
-    @MockitoBean JavaMailSender mail;
+    @MockitoBean BrevoEmailClient mail;
     MockMvc mvc;
     User admin, member;
     String adminToken, memberToken, refreshToken;

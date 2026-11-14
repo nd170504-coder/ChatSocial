@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -62,7 +62,7 @@ class NotificationIntegrationTests {
     @Autowired PasswordEncoder passwords;
     @Autowired SimpUserRegistry registry;
     @Autowired WebApplicationContext context;
-    @MockitoBean JavaMailSender mail;
+    @MockitoBean BrevoEmailClient mail;
     @MockitoBean com.chatsocial.service.SupabaseStorageService storage;
     final ObjectMapper json = new ObjectMapper();
 

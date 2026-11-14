@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.chatsocial.service.BrevoEmailClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,7 +27,7 @@ class UserSearchIntegrationTests {
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
     @Autowired UserProfileRepository profiles;
-    @MockitoBean JavaMailSender mailSender;
+    @MockitoBean BrevoEmailClient mailSender;
     private MockMvc mvc;
     private User viewer;
 
