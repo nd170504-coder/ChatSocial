@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router'
+import { Navigate, NavLink, Outlet } from 'react-router'
 import { Icon } from '../components/ui/Icon'
 import { AccountDropdown } from '../components/AccountDropdown'
 import { useAuth } from '../features/auth/hooks/useAuth'
@@ -9,6 +9,11 @@ import { ChatNavLink } from '../features/chat/ChatNavLink'
 import { PresenceProvider } from '../features/presence/PresenceProvider'
 
 export function AppLayout() {
+  const { session } = useAuth()
+  return session?.user.role === 'ADMIN' ? <Navigate to="/admin" replace /> : <UserAppLayout />
+}
+
+function UserAppLayout() {
   const { session } = useAuth()
   const profileState = useProfile(session!.user.id)
   return <PresenceProvider key={session!.user.id} userId={session!.user.id}><ChatProvider userId={session!.user.id}><AppContent userId={session!.user.id} profileState={profileState} /></ChatProvider></PresenceProvider>

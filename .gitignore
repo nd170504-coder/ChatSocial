@@ -8,6 +8,10 @@ application-local.yml
 application-local.yaml
 application-local.properties
 
+# Local admin bootstrap (contains local credentials)
+/backend/src/main/java/com/chatsocial/service/LocalAdminBootstrapService.java
+/backend/src/test/java/com/chatsocial/service/LocalAdminBootstrapServiceTests.java
+
 # Dependencies and generated output
 node_modules/
 target/

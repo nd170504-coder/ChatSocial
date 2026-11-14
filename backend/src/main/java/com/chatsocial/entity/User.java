@@ -7,6 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import java.util.Locale;
 import com.chatsocial.enums.UserStatus;
+import com.chatsocial.enums.UserRole;
 
 @Entity
 @Table(
@@ -24,7 +25,6 @@ import com.chatsocial.enums.UserStatus;
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PUBLIC)
 public class User {
 
     @Id
@@ -45,6 +45,19 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private UserStatus status = UserStatus.ACTIVE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false, length = 20, columnDefinition = "varchar(20) default 'USER'")
+    private UserRole role = UserRole.USER;
+
+    @Column(name = "moderation_reason", length = 500)
+    private String moderationReason;
+
+    @Column(name = "moderated_by", length = 255)
+    private String moderatedBy;
+
+    @Column(name = "moderated_at")
+    private Instant moderatedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false,
@@ -80,5 +93,16 @@ public class User {
 
     public User(String id, String email, String passwordHash, String username, UserStatus status, Instant createdAt, Instant updatedAt) {
         this(id, email, passwordHash, username, status, createdAt, updatedAt, null);
+    }
+
+    public User(String id, String email, String passwordHash, String username, UserStatus status, Instant createdAt, Instant updatedAt, Instant lastSeenAt) {
+        this.id = id;
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.username = username;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.lastSeenAt = lastSeenAt;
     }
 }

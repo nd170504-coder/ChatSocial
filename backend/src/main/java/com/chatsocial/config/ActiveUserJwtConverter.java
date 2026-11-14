@@ -2,6 +2,8 @@ package com.chatsocial.config;
 
 import com.chatsocial.enums.UserStatus;
 import com.chatsocial.repository.UserSessionRepository;
+import com.chatsocial.repository.UserRepository;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -14,9 +16,11 @@ import java.time.Instant;
 @Component
 public class ActiveUserJwtConverter implements Converter<Jwt, AbstractAuthenticationToken> {
     private final UserSessionRepository sessions;
+    private final UserRepository users;
 
-    public ActiveUserJwtConverter(UserSessionRepository sessions) {
+    public ActiveUserJwtConverter(UserSessionRepository sessions, UserRepository users) {
         this.sessions = sessions;
+        this.users = users;
     }
 
     @Override
@@ -26,6 +30,10 @@ public class ActiveUserJwtConverter implements Converter<Jwt, AbstractAuthentica
                 || !sessions.isActive(sessionId, jwt.getSubject(), Instant.now(), UserStatus.ACTIVE)) {
             throw new InvalidBearerTokenException("Session or user is unavailable");
         }
-        return new JwtAuthenticationToken(jwt, List.of(), jwt.getSubject());
+        var user = users.findById(jwt.getSubject())
+                .filter(value -> value.getStatus() == UserStatus.ACTIVE)
+                .orElseThrow(() -> new InvalidBearerTokenException("User is unavailable"));
+        return new JwtAuthenticationToken(jwt,
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())), jwt.getSubject());
     }
 }
