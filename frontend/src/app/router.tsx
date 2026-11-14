@@ -18,6 +18,9 @@ import { FriendsPage } from '../features/friends/pages/FriendsPage'
 import { BlockedUsersPage } from '../features/blocks/BlockedUsersPage'
 import { ChatPage } from '../features/chat/ChatPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
+import { AdminPage } from '../features/admin/AdminPage'
+import { AdminLayout } from '../layouts/AdminLayout'
+import { AdminOverviewPage } from '../features/admin/AdminOverviewPage'
 
 export function AppRouter() {
   return <Routes>
@@ -31,6 +34,10 @@ export function AppRouter() {
       </Route>
     </Route>
     <Route element={<AuthGate requireSession />}>
+      <Route element={<AdminLayout />}>
+        <Route path="/admin" element={<AdminOverviewPage />} />
+        <Route path="/admin/users" element={<AdminPage />} />
+      </Route>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/feed" replace />} />
         <Route path="/feed" element={<FeedPage />} />

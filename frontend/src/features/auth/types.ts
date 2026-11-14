@@ -3,6 +3,7 @@ export interface User {
   email: string
   username: string
   fullName: string
+  role: 'USER' | 'ADMIN'
   status: 'PENDING_VERIFICATION' | 'ACTIVE' | 'DISABLED' | 'SUSPENDED' | 'DELETED'
 }
 
