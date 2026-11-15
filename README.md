@@ -45,10 +45,12 @@ Dự án được xây dựng theo mô hình tách biệt Frontend và Backend, 
 
 ## Cấu trúc dự án
 
+```text
 ChatSocial/
 ├── frontend/    # Giao diện và các chức năng phía người dùng
 ├── backend/     # REST API, xử lý nghiệp vụ và WebSocket
 └── README.md    # Giới thiệu dự án
+```
 
 ## Mục tiêu dự án
 
